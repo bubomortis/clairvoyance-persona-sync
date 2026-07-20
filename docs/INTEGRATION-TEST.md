@@ -3,9 +3,51 @@
 The one thing the automated suite can't cover: whether an imported session is actually **offered for resume** by the target's Universal Resume, **under a different model/provider**. This runbook exercises exactly that. Run it before cutting a release.
 
 **Prerequisites**
-- Two machines, both Clairvoyance **≥ 0.77.0** (Universal Resume) with `clvsync` built.
+- Two machines, both Clairvoyance **≥ 0.77.0** (Universal Resume).
 - **Machine A** (source): has a persona with at least one **real, resumable session** (talk to it once so a session exists).
 - **Machine B** (target): ideally configured to run a **different model/provider** than A (e.g. A = Claude Opus, B = Sonnet / a local model / Codex) — that's the whole point of the test.
+
+---
+
+## Step 0 — (BOTH machines) install & prep the sync system
+
+This exercises the setup runbook itself ([AGENTS.md](../AGENTS.md)), so the install path
+is validated, not assumed. Do this on **A and B**.
+
+**0a. Obtain `clvsync`.** Either download the build for this OS from GitHub **Releases** and
+verify it, or build from a clone:
+
+```sh
+# Option 1 — prebuilt (once a release exists):
+#   download clvsync-<os>-<arch>[.exe] + SHA256SUMS, then:
+sha256sum -c SHA256SUMS 2>/dev/null | grep "$(uname -s | tr A-Z a-z)" || echo "check your line"
+# Option 2 — from source:
+go build -o clvsync ./cmd/clvsync
+./clvsync datadir        # smoke: prints this machine's Clairvoyance data dir
+```
+> Pre-release note: no signed Release binaries exist until `v0.1.0` is tagged, so tonight
+> you'll use **Option 2 (build from source)** on both machines. The Release/verify path is
+> what the tag's CI job produces.
+
+**0b. Create the Sync Operator staff.** In Clairvoyance on each machine, add a Staff member
+named **Sync Operator** whose **knowledge template is `Sync Operator`** (content:
+[personas/Sync Operator.md](../personas/Sync%20Operator.md)). The `knowledgeTemplate` marker
+is what arms the S15 guard.
+
+**0c. Confirm the guard recognizes it** (proves the marker took):
+
+```sh
+./clvsync export --persona "Sync Operator" --out op.cvpkg
+# expect: REFUSED with an S15 message telling you to pass --allow-operator-sync
+```
+If that export is refused, the operator is correctly recognized as machine-local. If it
+*succeeds*, the persona's `knowledgeTemplate` marker is missing — fix it before continuing.
+
+| Check | A | B |
+| ----- | - | - |
+| `clvsync` obtained + `datadir` smoke works | ☐ | ☐ |
+| Sync Operator staff created with the `Sync Operator` template | ☐ | ☐ |
+| Operator export refused by the S15 guard | ☐ | ☐ |
 
 ---
 
@@ -106,11 +148,4 @@ Then chat with it once on B, export **B → A**, and sync back into A:
 | After sync-back, A still has **A's** model/runtime (not B's) | ☐ yes ☐ no |
 | verify-import all `[PASS]` on both machines | ☐ yes ☐ no |
 
-## Step 7 (optional) — the Sync Operator guard sanity check
-
-Confirm you cannot accidentally sync the operator:
-
-```sh
-./clvsync export --persona "Sync Operator" --out op.cvpkg   # expect: refused (S15)
-```
-Expect an error telling you to pass `--allow-operator-sync`. That's the guard working.
+*(The Sync Operator guard was already validated in Step 0c.)*
