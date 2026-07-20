@@ -245,6 +245,9 @@ func applyPersona(stage string, meta pkg.Meta, in *clv.Instance, opts Options) (
 	switch action {
 	case "created":
 		rep.plan("definition: create new persona %s", meta.PersonaName)
+		for _, w := range machineLocalAdvisories(entry) {
+			rep.warn("%s", w)
+		}
 	case "merged":
 		rep.plan("definition: merge — portable updated %v, machine-local preserved %v", orNone(changed), orNone(preserved))
 	case "overwritten":
@@ -572,4 +575,47 @@ func readEntries(path string) []json.RawMessage {
 func dirExists(p string) bool {
 	fi, err := os.Stat(p)
 	return err == nil && fi.IsDir()
+}
+
+// machineLocalAdvisories inspects a freshly-created persona definition for machine-local
+// fields that carried over from the SOURCE machine and likely need review on this one
+// (§17.1: on a create there is no destination value to preserve). Non-fatal; advisory.
+func machineLocalAdvisories(entry []byte) []string {
+	var d struct {
+		Shell struct {
+			Cwd     string `json:"cwd"`
+			Command string `json:"command"`
+			Type    string `json:"type"`
+		} `json:"shell"`
+		AI struct {
+			Provider string `json:"provider"`
+			Model    string `json:"model"`
+		} `json:"ai"`
+	}
+	if json.Unmarshal(entry, &d) != nil {
+		return nil
+	}
+	var out []string
+	if c := d.Shell.Cwd; c != "" && isAbsPathLike(c) {
+		out = append(out, fmt.Sprintf("definition's shell.cwd points at %q (from the source machine) — set it to a valid path on THIS machine before relying on Reegor's shell", c))
+	}
+	if cmd := d.Shell.Command; cmd != "" && looksWindowsShell(cmd) {
+		out = append(out, fmt.Sprintf("definition's shell is %q — if this machine is not Windows, change the shell in the persona settings", cmd))
+	}
+	if p := d.AI.Provider; p != "" {
+		out = append(out, fmt.Sprintf("definition runs under provider=%q — if this machine uses a different provider/model, update it in the persona settings (Universal Resume still resumes the session cross-provider)", p))
+	}
+	return out
+}
+
+func isAbsPathLike(p string) bool {
+	if len(p) >= 2 && p[1] == ':' { // C:\...
+		return true
+	}
+	return len(p) > 0 && (p[0] == '/' || p[0] == '\\')
+}
+
+func looksWindowsShell(cmd string) bool {
+	c := filepath.Base(cmd)
+	return c == "powershell.exe" || c == "pwsh.exe" || c == "cmd.exe"
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/bubomortis/clairvoyance-persona-sync/internal/clv"
@@ -234,6 +235,38 @@ func TestOperatorGuard_Import(t *testing.T) {
 	dst2, _ := clv.Open(dst2Dir)
 	if _, err := importer.Apply(pkgPath, dst2, importer.Options{AllowOperatorSync: true}); err == nil {
 		t.Fatal("self-overwrite of the live operator must be hard-blocked even with the override")
+	}
+}
+
+// TestCreateAdvisories: a fresh create of a persona whose definition carries the source
+// machine's shell.cwd / provider surfaces review warnings (§17.1).
+func TestCreateAdvisories(t *testing.T) {
+	srcEntry := `{"id":"` + syncID + `","name":"Syncy","jobDescription":"x",` +
+		`"shell":{"type":"powershell","command":"powershell.exe","cwd":"C:\\Users\\alice\\AppData\\Roaming\\clairvoyance"},` +
+		`"ai":{"provider":"claude","model":"default"}}`
+	srcDir := miniInstance(t, srcEntry)
+	src, _ := clv.Open(srcDir)
+	p, _ := src.FindPersona(syncID)
+	pkgPath := filepath.Join(t.TempDir(), "syncy.cvpkg")
+	export.Persona(src, p, pkgPath, export.Options{})
+
+	dstDir := miniInstance(t, `{"id":"other","name":"Other"}`)
+	dst, _ := clv.Open(dstDir)
+	rep, err := importer.Apply(pkgPath, dst, importer.Options{Mode: clv.ModeSync})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var haveCwd, haveProvider bool
+	for _, w := range rep.Warnings {
+		if strings.Contains(w, "shell.cwd") {
+			haveCwd = true
+		}
+		if strings.Contains(w, "provider=") {
+			haveProvider = true
+		}
+	}
+	if !haveCwd || !haveProvider {
+		t.Fatalf("expected create-time advisories for shell.cwd and provider; got %v", rep.Warnings)
 	}
 }
 
