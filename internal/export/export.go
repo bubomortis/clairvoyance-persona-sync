@@ -1,8 +1,7 @@
-// Package export builds a Tier-1 persona package (§8).
+// Package export builds persona (Tier 1/2) and workspace (Tier 3) packages (§8).
 //
-// Flow: gather definition + memory + history into a staging tree → secret-scan
-// (block by default, S1) → SHA-256 manifest (S8) → tar → optional age encryption
-// (§7) → optional minisign signature.
+// Common tail (finalize): secret-scan block (S1) → SHA-256 manifest (S8) → tar →
+// optional age encryption (§7) → optional minisign signature.
 package export
 
 import (
@@ -24,13 +23,13 @@ import (
 	"github.com/bubomortis/clairvoyance-persona-sync/internal/scan"
 )
 
-// Options controls encryption, signing, and the secret-scan gate.
+// Options controls tier, encryption, signing, and the secret-scan gate.
 type Options struct {
-	Tier         int                  // 1 = portable; 2 = + Universal Resume artifacts
-	Passphrase   string               // age passphrase mode
-	Recipient    string               // age X25519 recipient ("age1...")
-	SignKey      *minisign.PrivateKey // minisign detached signature
-	AllowSecrets bool                 // override the secret-scan block (S1)
+	Tier         int
+	Passphrase   string
+	Recipient    string
+	SignKey      *minisign.PrivateKey
+	AllowSecrets bool
 }
 
 // Result reports the produced artifacts and any secret findings.
@@ -49,10 +48,73 @@ func writeJSON(path string, v any) error {
 	if string(b) == "null" {
 		b = []byte("[]")
 	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
 	return os.WriteFile(path, b, 0o644)
 }
 
-// Persona exports one persona to outPath (Tier 1, or Tier 2 with resume artifacts).
+func newMeta(tier int) pkg.Meta {
+	return pkg.Meta{SchemaVersion: 1, Tier: tier, CreatedAt: time.Now().UTC().Format(time.RFC3339), SourceOS: runtime.GOOS}
+}
+
+// stagePersona lays a persona's Tier-1(+2) contents into stageRoot under subdir
+// ("" for a standalone persona, or "roster/<lname>" inside a workspace package).
+func stagePersona(in *clv.Instance, p *clv.Persona, stageRoot, subdir string, includeMemory, tier2 bool) error {
+	base := filepath.Join(stageRoot, subdir)
+	if err := os.WriteFile(mustDir(filepath.Join(base, "definition", "staff-entry.json")), p.Entry, 0o644); err != nil {
+		return err
+	}
+	if tp, ok := in.TemplatePath(p.Template); ok {
+		if err := pkg.CopyFile(tp, filepath.Join(base, "definition", "personas", p.Template)); err != nil {
+			return err
+		}
+	}
+	if includeMemory {
+		for _, m := range p.Memory {
+			dst := filepath.Join(base, "memory", m.Scope, p.Lname)
+			if err := os.MkdirAll(dst, 0o755); err != nil {
+				return err
+			}
+			if err := os.CopyFS(dst, os.DirFS(m.Dir)); err != nil {
+				return err
+			}
+		}
+	}
+	if p.History != "" {
+		if err := pkg.CopyFile(p.History, filepath.Join(base, "history", "staff-"+p.ID+".json")); err != nil {
+			return err
+		}
+	}
+	if tier2 {
+		r := in.LoadResume(p)
+		if len(r.Sessions) > 0 {
+			var recs []map[string]any
+			for _, s := range r.Sessions {
+				s.Rec["workspacePath"] = clv.WSToken(s.Scope)
+				s.Rec["workspaceId"] = clv.WSIDToken(s.Scope)
+				recs = append(recs, s.Rec)
+			}
+			if err := writeJSON(filepath.Join(base, "resume", "records.json"), recs); err != nil {
+				return err
+			}
+			if err := writeJSON(filepath.Join(base, "resume", "session-summaries.json"), r.Summaries); err != nil {
+				return err
+			}
+			if err := writeJSON(filepath.Join(base, "resume", "resume-exclusions.json"), r.Exclusions); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func mustDir(file string) string {
+	_ = os.MkdirAll(filepath.Dir(file), 0o755)
+	return file
+}
+
+// Persona exports one persona (Tier 1, or Tier 2 with resume artifacts).
 func Persona(in *clv.Instance, p *clv.Persona, outPath string, opts Options) (*Result, error) {
 	stage, err := os.MkdirTemp("", "clvsync-export-*")
 	if err != nil {
@@ -60,81 +122,33 @@ func Persona(in *clv.Instance, p *clv.Persona, outPath string, opts Options) (*R
 	}
 	defer os.RemoveAll(stage)
 
-	// definition
-	defDir := filepath.Join(stage, "definition")
-	if err := os.MkdirAll(defDir, 0o755); err != nil {
+	if err := stagePersona(in, p, stage, "", true, opts.Tier >= 2); err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(filepath.Join(defDir, "staff-entry.json"), p.Entry, 0o644); err != nil {
-		return nil, err
-	}
-	meta := pkg.Meta{
-		SchemaVersion: 1, Tier: 1, PersonaID: p.ID, PersonaName: p.Name,
-		Template: p.Template, CreatedAt: time.Now().UTC().Format(time.RFC3339), SourceOS: runtime.GOOS,
-	}
-	if tp, ok := in.TemplatePath(p.Template); ok {
-		if err := pkg.CopyFile(tp, filepath.Join(defDir, "personas", p.Template)); err != nil {
-			return nil, err
-		}
-	}
-
-	// memory (keyed by scope name, not source path — this is the tokenization)
+	meta := newMeta(1)
+	meta.PersonaID, meta.PersonaName, meta.Template = p.ID, p.Name, p.Template
 	for _, m := range p.Memory {
-		dst := filepath.Join(stage, "memory", m.Scope, p.Lname)
-		if err := os.MkdirAll(dst, 0o755); err != nil {
-			return nil, err
-		}
-		if err := os.CopyFS(dst, os.DirFS(m.Dir)); err != nil {
-			return nil, err
-		}
 		meta.Scopes = append(meta.Scopes, m.Scope)
 	}
-
-	// history
-	if p.History != "" {
-		if err := pkg.CopyFile(p.History, filepath.Join(stage, "history", "staff-"+p.ID+".json")); err != nil {
-			return nil, err
-		}
-	}
-
-	// Tier 2: Universal Resume artifacts (records tokenized by workspace scope;
-	// provider/model kept — Universal Resume resumes across providers).
 	if opts.Tier >= 2 {
-		r := in.LoadResume(p)
-		if len(r.Sessions) > 0 {
-			rdir := filepath.Join(stage, "resume")
-			if err := os.MkdirAll(rdir, 0o755); err != nil {
-				return nil, err
-			}
-			var recs []map[string]any
-			for _, s := range r.Sessions {
-				s.Rec["workspacePath"] = clv.WSToken(s.Scope)
-				s.Rec["workspaceId"] = clv.WSIDToken(s.Scope)
-				recs = append(recs, s.Rec)
-			}
-			if err := writeJSON(filepath.Join(rdir, "records.json"), recs); err != nil {
-				return nil, err
-			}
-			if err := writeJSON(filepath.Join(rdir, "session-summaries.json"), r.Summaries); err != nil {
-				return nil, err
-			}
-			if err := writeJSON(filepath.Join(rdir, "resume-exclusions.json"), r.Exclusions); err != nil {
-				return nil, err
-			}
+		if _, err := os.Stat(filepath.Join(stage, "resume")); err == nil {
 			meta.Tier = 2
 		}
 	}
+	return finalize(stage, outPath, meta, opts)
+}
 
-	// meta (included in the manifest)
+// finalize runs the shared packaging tail for any staged tree.
+func finalize(stage, outPath string, meta pkg.Meta, opts Options) (*Result, error) {
 	mb, _ := json.MarshalIndent(meta, "", "  ")
 	if err := os.WriteFile(filepath.Join(stage, "meta.json"), mb, 0o644); err != nil {
 		return nil, err
 	}
 
-	// secret scan gate (S1) — before packaging
+	// secret scan gate (S1)
 	sc, _ := scan.New(nil)
 	var hits []scan.Match
-	err = filepath.WalkDir(stage, func(pth string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(stage, func(pth string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
@@ -149,7 +163,7 @@ func Persona(in *clv.Instance, p *clv.Persona, outPath string, opts Options) (*R
 		return &Result{SecretHits: hits}, fmt.Errorf("secret-scan blocked export: %d match(es); use AllowSecrets to override", len(hits))
 	}
 
-	// manifest (S8) — written after Build so it is not self-referential
+	// manifest (S8) — after Build so it is not self-referential
 	mani, err := manifest.Build(stage)
 	if err != nil {
 		return nil, err
@@ -159,13 +173,11 @@ func Persona(in *clv.Instance, p *clv.Persona, outPath string, opts Options) (*R
 		return nil, err
 	}
 
-	// tar
 	var tarbuf bytes.Buffer
 	if err := pkg.WriteTar(stage, &tarbuf); err != nil {
 		return nil, err
 	}
 
-	// write (encrypted or plain)
 	out, err := os.Create(outPath)
 	if err != nil {
 		return nil, err
@@ -188,7 +200,6 @@ func Persona(in *clv.Instance, p *clv.Persona, outPath string, opts Options) (*R
 		return nil, err
 	}
 
-	// sign (S8/authenticity)
 	if opts.SignKey != nil {
 		data, err := os.ReadFile(outPath)
 		if err != nil {

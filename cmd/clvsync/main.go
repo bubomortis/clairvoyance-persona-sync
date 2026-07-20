@@ -22,10 +22,11 @@ import (
 const usage = `clvsync — Clairvoyance Persona & Workspace Sync
 
 Commands:
-  export   Export a persona to a package (Tier 1)
-  import   Import a package into this instance
-  keygen   Generate a minisign signing keypair
-  datadir  Print the resolved Clairvoyance data directory
+  export          Export a persona (--persona, Tier 1/2) or workspace (--workspace, Tier 3)
+  import          Import a package into this instance
+  workspace-prep  Register + scaffold a workspace to receive an import (run app-closed)
+  keygen          Generate a minisign signing keypair
+  datadir         Print the resolved Clairvoyance data directory
 
 Secrets come from env vars (not flags):
   CLVSYNC_PASSPHRASE     age encryption/decryption passphrase
@@ -52,6 +53,8 @@ func main() {
 		err = cmdExport(os.Args[2:])
 	case "import":
 		err = cmdImport(os.Args[2:])
+	case "workspace-prep":
+		err = cmdWorkspacePrep(os.Args[2:])
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 	default:
@@ -108,7 +111,8 @@ func cmdKeygen(args []string) error {
 
 func cmdExport(args []string) error {
 	fs := flag.NewFlagSet("export", flag.ExitOnError)
-	persona := fs.String("persona", "", "persona name or staff id (required)")
+	persona := fs.String("persona", "", "persona name or staff id (Tier 1/2)")
+	workspace := fs.String("workspace", "", "workspace name to export whole (Tier 3)")
 	out := fs.String("out", "", "output package path (required)")
 	tier := fs.Int("tier", 1, "1 = portable persona; 2 = + Universal Resume (cross-model session resume)")
 	recipient := fs.String("recipient", "", "age X25519 recipient public key (encrypt to key)")
@@ -116,14 +120,10 @@ func cmdExport(args []string) error {
 	allowSecrets := fs.Bool("allow-secrets", false, "override the secret-scan block")
 	dataDir := fs.String("data-dir", "", "override Clairvoyance data dir")
 	fs.Parse(args)
-	if *persona == "" || *out == "" {
-		return fmt.Errorf("--persona and --out are required")
+	if *out == "" || (*persona == "" && *workspace == "") {
+		return fmt.Errorf("--out and one of --persona or --workspace are required")
 	}
 	in, err := resolveDataDir(*dataDir)
-	if err != nil {
-		return err
-	}
-	p, err := in.FindPersona(*persona)
 	if err != nil {
 		return err
 	}
@@ -135,7 +135,16 @@ func cmdExport(args []string) error {
 		}
 		opts.SignKey = &priv
 	}
-	res, err := export.Persona(in, p, *out, opts)
+	var res *export.Result
+	if *workspace != "" {
+		res, err = export.Workspace(in, *workspace, *out, opts)
+	} else {
+		p, ferr := in.FindPersona(*persona)
+		if ferr != nil {
+			return ferr
+		}
+		res, err = export.Persona(in, p, *out, opts)
+	}
 	if err != nil {
 		if len(res.SecretHits) > 0 {
 			fmt.Fprintf(os.Stderr, "secret-scan found %d match(es):\n", len(res.SecretHits))
@@ -145,9 +154,39 @@ func cmdExport(args []string) error {
 		}
 		return err
 	}
-	fmt.Printf("exported %s -> %s (encrypted=%v)\n", p.Name, res.PackagePath, res.Encrypted)
+	label := *persona
+	if *workspace != "" {
+		label = "workspace:" + *workspace
+	}
+	fmt.Printf("exported %s -> %s (encrypted=%v)\n", label, res.PackagePath, res.Encrypted)
 	if res.SigPath != "" {
 		fmt.Printf("signature: %s\n", res.SigPath)
+	}
+	return nil
+}
+
+func cmdWorkspacePrep(args []string) error {
+	fs := flag.NewFlagSet("workspace-prep", flag.ExitOnError)
+	name := fs.String("name", "", "workspace name to register (required)")
+	path := fs.String("path", "", "local directory for the workspace (required)")
+	dataDir := fs.String("data-dir", "", "override Clairvoyance data dir")
+	fs.Parse(args)
+	if *name == "" || *path == "" {
+		return fmt.Errorf("--name and --path are required")
+	}
+	in, err := resolveDataDir(*dataDir)
+	if err != nil {
+		return err
+	}
+	ws, created, err := in.EnsureWorkspace(*name, *path)
+	if err != nil {
+		return err
+	}
+	if created {
+		fmt.Printf("registered workspace %q (%s) at %s\n", ws.Name, ws.ID, ws.Path)
+		fmt.Println("note: run this with Clairvoyance CLOSED, then start the app to pick up the new workspace.")
+	} else {
+		fmt.Printf("workspace %q already registered (%s) at %s\n", ws.Name, ws.ID, ws.Path)
 	}
 	return nil
 }
@@ -159,6 +198,7 @@ func cmdImport(args []string) error {
 	verifyKey := fs.String("verify-key", "", "minisign public key file to verify the signature")
 	sigFile := fs.String("sig", "", "detached signature file (.minisig)")
 	force := fs.Bool("force", false, "overwrite on staff-id collision")
+	wsPath := fs.String("workspace-path", "", "Tier 3: local path to create the target workspace if absent")
 	dataDir := fs.String("data-dir", "", "override Clairvoyance data dir")
 	fs.Parse(args)
 	if *in == "" {
@@ -168,7 +208,7 @@ func cmdImport(args []string) error {
 	if err != nil {
 		return err
 	}
-	opts := importer.Options{Force: *force, Passphrase: os.Getenv("CLVSYNC_PASSPHRASE")}
+	opts := importer.Options{Force: *force, WorkspacePath: *wsPath, Passphrase: os.Getenv("CLVSYNC_PASSPHRASE")}
 	if *identity != "" {
 		b, err := os.ReadFile(*identity)
 		if err != nil {
