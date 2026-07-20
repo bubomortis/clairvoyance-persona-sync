@@ -27,6 +27,7 @@ const usage = `clvsync — Clairvoyance Persona & Workspace Sync
 Commands:
   export          Export a persona (--persona, Tier 1/2) or workspace (--workspace, Tier 3)
   import          Import a package into this instance
+  verify          Verify a package's signature + integrity (no import)
   workspace-prep  Register + scaffold a workspace to receive an import (run app-closed)
   keygen          Generate a minisign signing keypair
   datadir         Print the resolved Clairvoyance data directory
@@ -58,6 +59,8 @@ func main() {
 		err = cmdImport(os.Args[2:])
 	case "workspace-prep":
 		err = cmdWorkspacePrep(os.Args[2:])
+	case "verify":
+		err = cmdVerify(os.Args[2:])
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 	default:
@@ -217,6 +220,42 @@ func human(b int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
+}
+
+func cmdVerify(args []string) error {
+	fs := flag.NewFlagSet("verify", flag.ExitOnError)
+	in := fs.String("in", "", "package path (required)")
+	verifyKey := fs.String("verify-key", "", "minisign public key file")
+	sigFile := fs.String("sig", "", "detached signature file")
+	fs.Parse(args)
+	if *in == "" {
+		return fmt.Errorf("--in is required")
+	}
+	opts := importer.Options{Passphrase: os.Getenv("CLVSYNC_PASSPHRASE")}
+	if *verifyKey != "" {
+		pub, err := loadPublicKey(*verifyKey)
+		if err != nil {
+			return err
+		}
+		opts.VerifyKey = &pub
+		if *sigFile == "" {
+			return fmt.Errorf("--verify-key requires --sig")
+		}
+		if opts.Sig, err = os.ReadFile(*sigFile); err != nil {
+			return err
+		}
+	}
+	meta, err := importer.Inspect(*in, opts)
+	if err != nil {
+		return err
+	}
+	who := meta.PersonaName
+	if meta.Tier >= 3 {
+		who = "workspace:" + meta.WorkspaceName
+	}
+	fmt.Printf("OK  tier=%d  %s  (created %s on %s)\n", meta.Tier, who, meta.CreatedAt, meta.SourceOS)
+	fmt.Println("  signature verified (if a key was provided) + manifest integrity OK")
+	return nil
 }
 
 func cmdWorkspacePrep(args []string) error {

@@ -144,6 +144,9 @@ func finalize(stage, outPath string, meta pkg.Meta, opts Options) (*Result, erro
 	if err := os.WriteFile(filepath.Join(stage, "meta.json"), mb, 0o644); err != nil {
 		return nil, err
 	}
+	if err := os.WriteFile(filepath.Join(stage, "IMPORT.md"), []byte(importDoc(meta)), 0o644); err != nil {
+		return nil, err
+	}
 
 	// secret scan gate (S1)
 	sc, _ := scan.New(nil)

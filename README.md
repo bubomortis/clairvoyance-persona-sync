@@ -49,7 +49,13 @@ Cross-platform: resolves the Clairvoyance data directory per OS (Windows `%APPDA
 - [x] **Phase 2** — Tier 2 Universal Resume (session records + summaries + exclusions; workspace binding remapped, provider/model preserved) *(done; round-trip + live-data validated)*
 - [x] **Phase 3** — Tier 3 whole-workspace (roster + content, heavy dirs excluded) + `workspace-prep` offline registry mint *(done; round-trip + live-data validated)*
 - [x] **Phase 4** — Tier 4 heavy add-on (`--include-heavy`) + §8a space-aware fail-down (skip-not-truncate) *(done; round-trip + live-validated)*
-- [ ] **Phase 5** — harden, docs, signed cross-platform release
+- [~] **Phase 5** — docs (Operator Guide, Security Audit re-verified), CI cross-compile (win/linux/mac) *(done)*; signed `v0.1.0` release **pending the two-machine Universal Resume integration test** ([docs/INTEGRATION-TEST.md](docs/INTEGRATION-TEST.md))
+
+## Documentation
+
+- [docs/OPERATOR-GUIDE.md](docs/OPERATOR-GUIDE.md) — export → transport → prep → import → verify, with troubleshooting
+- [docs/INTEGRATION-TEST.md](docs/INTEGRATION-TEST.md) — two-machine Tier-2 Universal Resume test (run before release)
+- [docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md) — the 14 findings re-verified against the built code
 
 ## License
 

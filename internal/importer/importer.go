@@ -76,6 +76,17 @@ func applyWorkspaceHeavy(stage string, meta pkg.Meta, in *clv.Instance) (*Report
 	return rep, nil
 }
 
+// Inspect verifies the signature, decrypts, and verifies the manifest, returning
+// the package meta without applying anything (backs the `verify` command).
+func Inspect(pkgPath string, opts Options) (*pkg.Meta, error) {
+	stage, meta, err := openPackage(pkgPath, opts)
+	if err != nil {
+		return nil, err
+	}
+	os.RemoveAll(stage)
+	return &meta, nil
+}
+
 // openPackage verifies, decrypts, safely extracts, and verifies the manifest,
 // returning the staging dir and parsed meta.
 func openPackage(pkgPath string, opts Options) (string, pkg.Meta, error) {
