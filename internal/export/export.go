@@ -25,11 +25,12 @@ import (
 
 // Options controls tier, encryption, signing, and the secret-scan gate.
 type Options struct {
-	Tier         int
-	Passphrase   string
-	Recipient    string
-	SignKey      *minisign.PrivateKey
-	AllowSecrets bool
+	Tier              int
+	Passphrase        string
+	Recipient         string
+	SignKey           *minisign.PrivateKey
+	AllowSecrets      bool
+	AllowOperatorSync bool // override the S15 export guard (§19.3)
 }
 
 // Result reports the produced artifacts and any secret findings.
@@ -116,6 +117,9 @@ func mustDir(file string) string {
 
 // Persona exports one persona (Tier 1, or Tier 2 with resume artifacts).
 func Persona(in *clv.Instance, p *clv.Persona, outPath string, opts Options) (*Result, error) {
+	if p.IsOperator() && !opts.AllowOperatorSync {
+		return nil, fmt.Errorf("%q is the Sync Operator — machine-local infrastructure, not a portable persona (§19.3); re-run with AllowOperatorSync only if you deliberately intend to move it", p.Name)
+	}
 	stage, err := os.MkdirTemp("", "clvsync-export-*")
 	if err != nil {
 		return nil, err

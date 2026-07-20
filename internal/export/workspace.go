@@ -27,6 +27,10 @@ func Workspace(in *clv.Instance, wsName, outPath string, opts Options) (*Result,
 	meta.WorkspaceName = wsName
 
 	for _, p := range in.PersonasInWorkspace(wsName) {
+		if p.IsOperator() && !opts.AllowOperatorSync {
+			// S15: never carry the Sync Operator in a workspace package by default.
+			continue
+		}
 		// memory=false: it travels inside workspace/.Clairvoyance/staff
 		if err := stagePersona(in, p, stage, filepath.Join("roster", p.Lname), false, false); err != nil {
 			return nil, err

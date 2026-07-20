@@ -87,6 +87,21 @@ func MintWorkspaceID() string {
 	return fmt.Sprintf("workspace-%d-%s", time.Now().UnixMilli(), string(b))
 }
 
+// EnsureWorkspaceMaybe is EnsureWorkspace, but in dryRun it reports what WOULD be
+// created without touching disk (returns a preview workspace with a minted id).
+func (in *Instance) EnsureWorkspaceMaybe(name, path string, dryRun bool) (Workspace, bool, error) {
+	if ws, ok := in.WorkspaceByName(name); ok {
+		return ws, false, nil
+	}
+	if !dryRun {
+		return in.EnsureWorkspace(name, path)
+	}
+	if path == "" {
+		return Workspace{}, false, fmt.Errorf("workspace %q not found on target and no workspace path given", name)
+	}
+	return Workspace{ID: MintWorkspaceID(), Name: name, Path: path}, true, nil
+}
+
 // EnsureWorkspace returns the named workspace, creating and registering it (offline,
 // app-closed) at path if absent. Returns (workspace, created, error).
 func (in *Instance) EnsureWorkspace(name, path string) (Workspace, bool, error) {

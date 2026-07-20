@@ -4,7 +4,7 @@ Transport a Clairvoyance **Staff member** — or a whole **workspace** — from 
 
 A Staff member isn't one file — it's a definition (`profiles/{id}/staff.json` entry), a custom persona template, per-workspace memory (`.Clairvoyance/staff/{name}/`), and history (`agent-history/staff-{id}.json`). `clvsync` gathers those, scrubs anything that shouldn't leave the machine, and re-homes them on the target.
 
-> ⚠️ **Status: early build (Phase 0 complete).** The security-critical core is implemented and unit-tested; the export/import commands are being layered on. Not yet ready for general use. See [Roadmap](#roadmap).
+> **Status: feature-complete (Phases 0–7), release pending one live test.** All four tiers, round-trip create-or-merge sync, the Sync Operator assisted-import flow, and the self-sync guard are implemented and tested. The signed `v0.1.0` release is held only for the two-machine Universal Resume integration test ([docs/INTEGRATION-TEST.md](docs/INTEGRATION-TEST.md)).
 
 ## Layered tiers
 
@@ -49,13 +49,30 @@ Cross-platform: resolves the Clairvoyance data directory per OS (Windows `%APPDA
 - [x] **Phase 2** — Tier 2 Universal Resume (session records + summaries + exclusions; workspace binding remapped, provider/model preserved) *(done; round-trip + live-data validated)*
 - [x] **Phase 3** — Tier 3 whole-workspace (roster + content, heavy dirs excluded) + `workspace-prep` offline registry mint *(done; round-trip + live-data validated)*
 - [x] **Phase 4** — Tier 4 heavy add-on (`--include-heavy`) + §8a space-aware fail-down (skip-not-truncate) *(done; round-trip + live-validated)*
-- [~] **Phase 5** — docs (Operator Guide, Security Audit re-verified), CI cross-compile (win/linux/mac) *(done)*; signed `v0.1.0` release **pending the two-machine Universal Resume integration test** ([docs/INTEGRATION-TEST.md](docs/INTEGRATION-TEST.md))
+- [x] **Phase 5** — docs (Operator Guide, Security Audit re-verified), CI cross-compile (win/linux/mac) *(done)*
+- [x] **Phase 6** — round-trip **create-or-merge sync**: `--mode sync|overwrite|skip`, portable-vs-machine-local definition split (machine-local runtime preserved on a round-trip), memory union, history newest-wins, `--dry-run` preview *(done; unit-tested + live CLI-validated)*
+- [x] **Phase 7** — **Sync Operator** assisted-import persona + `AGENTS.md` runbook, `import-receipt.json` + `verify-import` restart reconciliation, guided interactive `import`, and the **S15 self-sync guard** *(done; unit-tested + live CLI-validated)*
+- [ ] signed `v0.1.0` release — **held for the two-machine Universal Resume integration test** ([docs/INTEGRATION-TEST.md](docs/INTEGRATION-TEST.md))
+
+## Round-trip sync & the Sync Operator
+
+`clvsync import` defaults to **`sync`** (create-or-merge): re-syncing the same persona
+updates its portable fields but **preserves each machine's local runtime** (`model`,
+`runtime`, `shell`, …), so you can move a persona back and forth without clobbering
+either box's settings. `--dry-run` previews the exact plan first.
+
+For non-CLI users, each machine can run a **Sync Operator** Staff member that handles
+verify → preview → app-closed finish → restart verification in plain language. See
+[docs/SYNC-OPERATOR.md](docs/SYNC-OPERATOR.md) and [AGENTS.md](AGENTS.md). The operator is
+machine-local: `clvsync` refuses to sync it by default (guard **S15**).
 
 ## Documentation
 
+- [AGENTS.md](AGENTS.md) — have Clairvoyance Staff set up and run `clvsync` for you (no terminal)
 - [docs/OPERATOR-GUIDE.md](docs/OPERATOR-GUIDE.md) — export → transport → prep → import → verify, with troubleshooting
+- [docs/SYNC-OPERATOR.md](docs/SYNC-OPERATOR.md) — round-trip merge semantics, the Sync Operator persona, receipt/verify-import, the S15 guard
 - [docs/INTEGRATION-TEST.md](docs/INTEGRATION-TEST.md) — two-machine Tier-2 Universal Resume test (run before release)
-- [docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md) — the 14 findings re-verified against the built code
+- [docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md) — the findings re-verified against the built code
 
 ## License
 

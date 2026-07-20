@@ -5,6 +5,7 @@
 package main
 
 import (
+	"bufio"
 	"crypto/rand"
 	"flag"
 	"fmt"
@@ -26,11 +27,14 @@ const usage = `clvsync — Clairvoyance Persona & Workspace Sync
 
 Commands:
   export          Export a persona (--persona, Tier 1/2) or workspace (--workspace, Tier 3)
-  import          Import a package into this instance
+  import          Import a package into this instance (create-or-merge; --dry-run to preview)
   verify          Verify a package's signature + integrity (no import)
+  verify-import   Reconcile a post-import receipt against live state (§19.2)
   workspace-prep  Register + scaffold a workspace to receive an import (run app-closed)
   keygen          Generate a minisign signing keypair
   datadir         Print the resolved Clairvoyance data directory
+
+Run 'clvsync import' with no --in for a guided (interactive) import.
 
 Secrets come from env vars (not flags):
   CLVSYNC_PASSPHRASE     age encryption/decryption passphrase
@@ -61,6 +65,8 @@ func main() {
 		err = cmdWorkspacePrep(os.Args[2:])
 	case "verify":
 		err = cmdVerify(os.Args[2:])
+	case "verify-import":
+		err = cmdVerifyImport(os.Args[2:])
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 	default:
@@ -124,6 +130,7 @@ func cmdExport(args []string) error {
 	recipient := fs.String("recipient", "", "age X25519 recipient public key (encrypt to key)")
 	signKey := fs.String("sign-key", "", "minisign private key file to sign with")
 	allowSecrets := fs.Bool("allow-secrets", false, "override the secret-scan block")
+	allowOperator := fs.Bool("allow-operator-sync", false, "override the S15 guard against exporting the Sync Operator")
 	includeHeavy := fs.Bool("include-heavy", false, "workspace: also emit the Tier 4 heavy add-on (space-gated)")
 	dataDir := fs.String("data-dir", "", "override Clairvoyance data dir")
 	fs.Parse(args)
@@ -134,7 +141,7 @@ func cmdExport(args []string) error {
 	if err != nil {
 		return err
 	}
-	opts := export.Options{Tier: *tier, Recipient: *recipient, AllowSecrets: *allowSecrets, Passphrase: os.Getenv("CLVSYNC_PASSPHRASE")}
+	opts := export.Options{Tier: *tier, Recipient: *recipient, AllowSecrets: *allowSecrets, AllowOperatorSync: *allowOperator, Passphrase: os.Getenv("CLVSYNC_PASSPHRASE")}
 	if *signKey != "" {
 		priv, err := loadPrivateKey(*signKey)
 		if err != nil {
@@ -153,7 +160,7 @@ func cmdExport(args []string) error {
 		res, err = export.Persona(in, p, *out, opts)
 	}
 	if err != nil {
-		if len(res.SecretHits) > 0 {
+		if res != nil && len(res.SecretHits) > 0 {
 			fmt.Fprintf(os.Stderr, "secret-scan found %d match(es):\n", len(res.SecretHits))
 			for _, h := range res.SecretHits {
 				fmt.Fprintf(os.Stderr, "  %s:%d  %s\n", h.Path, h.Line, h.Pattern)
@@ -286,22 +293,36 @@ func cmdWorkspacePrep(args []string) error {
 
 func cmdImport(args []string) error {
 	fs := flag.NewFlagSet("import", flag.ExitOnError)
-	in := fs.String("in", "", "package path (required)")
+	in := fs.String("in", "", "package path (with no --in, runs a guided interactive import)")
 	identity := fs.String("identity", "", "age X25519 identity file (decrypt with key)")
 	verifyKey := fs.String("verify-key", "", "minisign public key file to verify the signature")
 	sigFile := fs.String("sig", "", "detached signature file (.minisig)")
-	force := fs.Bool("force", false, "overwrite on staff-id collision")
+	mode := fs.String("mode", "sync", "collision handling: sync (create-or-merge) | overwrite | skip")
+	force := fs.Bool("force", false, "back-compat alias for --mode overwrite")
+	dryRun := fs.Bool("dry-run", false, "preview the plan without writing anything")
+	allowOperator := fs.Bool("allow-operator-sync", false, "override the S15 guard against importing the Sync Operator")
 	wsPath := fs.String("workspace-path", "", "Tier 3: local path to create the target workspace if absent")
+	receipt := fs.String("receipt", "", "where to write import-receipt.json (default: <data-dir>/import-receipt.json)")
 	dataDir := fs.String("data-dir", "", "override Clairvoyance data dir")
 	fs.Parse(args)
+
+	// Guided interactive import when no package is named (§19 non-CLI path).
 	if *in == "" {
-		return fmt.Errorf("--in is required")
+		return interactiveImport(*dataDir)
+	}
+
+	m, err := clv.ParseMode(*mode)
+	if err != nil {
+		return err
 	}
 	inst, err := resolveDataDir(*dataDir)
 	if err != nil {
 		return err
 	}
-	opts := importer.Options{Force: *force, WorkspacePath: *wsPath, Passphrase: os.Getenv("CLVSYNC_PASSPHRASE")}
+	opts := importer.Options{
+		Mode: m, Force: *force, DryRun: *dryRun, AllowOperatorSync: *allowOperator,
+		WorkspacePath: *wsPath, ReceiptPath: *receipt, Passphrase: os.Getenv("CLVSYNC_PASSPHRASE"),
+	}
 	if *identity != "" {
 		b, err := os.ReadFile(*identity)
 		if err != nil {
@@ -326,12 +347,122 @@ func cmdImport(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("imported %s (%s), tier %d\n", rep.PersonaName, rep.PersonaID, rep.Tier)
-	fmt.Printf("  placed: %v\n", rep.Placed)
+	printReport(rep)
+	return nil
+}
+
+// printReport renders an import (or dry-run) report.
+func printReport(rep *importer.Report) {
+	verb := "imported"
+	if rep.DryRun {
+		verb = "DRY-RUN (no changes written)"
+	}
+	fmt.Printf("%s %s (%s), tier %d, mode %s\n", verb, rep.PersonaName, rep.PersonaID, rep.Tier, rep.Mode)
+	for _, p := range rep.Plan {
+		fmt.Printf("  plan: %s\n", p)
+	}
+	if !rep.DryRun && len(rep.Placed) > 0 {
+		fmt.Printf("  placed: %v\n", rep.Placed)
+	}
+	for _, w := range rep.Warnings {
+		fmt.Printf("  ⚠ %s\n", w)
+	}
 	if len(rep.SkippedScopes) > 0 {
-		fmt.Printf("  skipped scopes (no matching workspace on target): %v\n", rep.SkippedScopes)
+		fmt.Printf("  skipped: %v\n", rep.SkippedScopes)
+	}
+	if rep.ReceiptPath != "" {
+		fmt.Printf("  receipt: %s  (run 'clvsync verify-import --receipt %s' after restart)\n", rep.ReceiptPath, rep.ReceiptPath)
 	}
 	fmt.Printf("  note: %s\n", rep.ReviewNote)
+}
+
+// interactiveImport walks a non-CLI user through file → passphrase → dry-run preview
+// → confirm → apply (§19 guided wrapper).
+func interactiveImport(dataDir string) error {
+	r := bufio.NewReader(os.Stdin)
+	ask := func(prompt string) string {
+		fmt.Print(prompt)
+		s, _ := r.ReadString('\n')
+		return strings.TrimSpace(s)
+	}
+	pkgPath := ask("Package file (.cvpkg / .cvpkg.age): ")
+	if pkgPath == "" {
+		return fmt.Errorf("no package given")
+	}
+	pass := os.Getenv("CLVSYNC_PASSPHRASE")
+	if pass == "" {
+		pass = ask("Passphrase (blank if the package is not encrypted): ")
+	}
+	mode := ask("Mode [sync]/overwrite/skip: ")
+	m, err := clv.ParseMode(mode)
+	if err != nil {
+		return err
+	}
+	inst, err := resolveDataDir(dataDir)
+	if err != nil {
+		return err
+	}
+	base := importer.Options{Mode: m, Passphrase: pass}
+
+	// Always preview first.
+	preview := base
+	preview.DryRun = true
+	rep, err := importer.Apply(pkgPath, inst, preview)
+	if err != nil {
+		return err
+	}
+	fmt.Println("\n--- preview ---")
+	printReport(rep)
+	if ask("\nApply these changes? (yes/no): ") != "yes" {
+		fmt.Println("aborted; nothing changed.")
+		return nil
+	}
+	fmt.Println("Make sure Clairvoyance is CLOSED before applying, so its file writes don't collide.")
+	if ask("Is Clairvoyance closed? (yes/no): ") != "yes" {
+		fmt.Println("aborted; close the app and re-run.")
+		return nil
+	}
+	rep, err = importer.Apply(pkgPath, inst, base)
+	if err != nil {
+		return err
+	}
+	printReport(rep)
+	return nil
+}
+
+func cmdVerifyImport(args []string) error {
+	fs := flag.NewFlagSet("verify-import", flag.ExitOnError)
+	receipt := fs.String("receipt", "", "import-receipt.json path (required)")
+	dataDir := fs.String("data-dir", "", "override Clairvoyance data dir")
+	fs.Parse(args)
+	if *receipt == "" {
+		return fmt.Errorf("--receipt is required")
+	}
+	rec, err := importer.LoadReceipt(*receipt)
+	if err != nil {
+		return err
+	}
+	dd := *dataDir
+	if dd == "" {
+		dd = rec.DataDir
+	}
+	inst, err := resolveDataDir(dd)
+	if err != nil {
+		return err
+	}
+	res := importer.VerifyReceipt(rec, inst)
+	fmt.Printf("verify-import: %s (tier %d, mode %s, imported %s)\n", rec.PersonaName, rec.Tier, rec.Mode, rec.ImportedAt)
+	for _, l := range res.Lines {
+		mark := "PASS"
+		if !l.OK {
+			mark = "FAIL"
+		}
+		fmt.Printf("  [%s] %-9s %s\n", mark, l.Layer, l.Detail)
+	}
+	if !res.OK {
+		return fmt.Errorf("reconciliation found mismatches — see FAIL rows above")
+	}
+	fmt.Println("  all checks passed; note: whether the session is offered for RESUME is still a human check in the UI.")
 	return nil
 }
 

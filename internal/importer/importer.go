@@ -1,7 +1,10 @@
-// Package importer applies persona (Tier 1/2) and workspace (Tier 3) packages (§9).
+// Package importer applies persona (Tier 1/2) and workspace (Tier 3/4) packages (§9).
 //
-// Order: verify signature (S8) → decrypt (§7) → safe-extract (S3) → verify manifest
-// (S8) → dispatch by tier → collision check (S6) → non-destructive merge with backup (S7).
+// Order: operator guard (S15) → verify signature (S8) → decrypt (§7) → safe-extract
+// (S3) → verify manifest (S8) → dispatch by tier → collision/mode resolution (S6) →
+// non-destructive component merge with backup (S7, §17). A --dry-run pass computes
+// the same plan without writing. On success the finisher writes an import receipt
+// (§19.2) for the restart-time verify-import reconciliation.
 package importer
 
 import (
@@ -20,25 +23,59 @@ import (
 	"github.com/bubomortis/clairvoyance-persona-sync/internal/pkg"
 )
 
-// Options controls decryption, verification, collision handling, and workspace prep.
+// Options controls decryption, verification, merge mode, and workspace prep.
 type Options struct {
-	Passphrase    string
-	Identity      string // age X25519 secret key
-	Sig           []byte
-	VerifyKey     *minisign.PublicKey
-	Force         bool
-	WorkspacePath string // Tier 3: where to create the target workspace if absent
+	Passphrase        string
+	Identity          string // age X25519 secret key
+	Sig               []byte
+	VerifyKey         *minisign.PublicKey
+	Mode              clv.Mode // sync (default) | overwrite | skip (§17.3)
+	Force             bool     // back-compat: equivalent to Mode=overwrite
+	DryRun            bool     // compute the plan, write nothing (§17.3)
+	AllowOperatorSync bool     // override the S15 self-sync guard (§19.3)
+	WorkspacePath     string   // Tier 3: where to create the target workspace if absent
+	ReceiptPath       string   // where the finisher writes import-receipt.json (§19.2)
 }
 
-// Report summarizes an import.
+// mode resolves the effective merge mode (Force wins for back-compat).
+func (o Options) mode() clv.Mode {
+	if o.Force {
+		return clv.ModeOverwrite
+	}
+	if o.Mode == "" {
+		return clv.ModeSync
+	}
+	return o.Mode
+}
+
+// Report summarizes an import (or a dry-run plan).
 type Report struct {
-	PersonaID     string
-	PersonaName   string // or workspace name for Tier 3
-	Tier          int
-	Placed        []string
-	SkippedScopes []string
-	BackedUp      []string
-	ReviewNote    string
+	PersonaID        string
+	PersonaName      string // or workspace name for Tier 3
+	WorkspaceName    string
+	WorkspaceID      string
+	Tier             int
+	Mode             string
+	DryRun           bool
+	Placed           []string // components actually written (empty on dry-run)
+	Plan             []string // human-readable planned actions (both modes)
+	Warnings         []string
+	SkippedScopes    []string
+	BackedUp         []string
+	SessionIDs       []string
+	PortableUpdated  []string
+	MachineLocalKept []string
+	ReviewNote       string
+	ReceiptPath      string
+
+	files []string // absolute placed paths to hash into the receipt
+}
+
+func (r *Report) plan(format string, a ...any) { r.Plan = append(r.Plan, fmt.Sprintf(format, a...)) }
+func (r *Report) warn(format string, a ...any) { r.Warnings = append(r.Warnings, fmt.Sprintf(format, a...)) }
+func (r *Report) placed(what string, files ...string) {
+	r.Placed = append(r.Placed, what)
+	r.files = append(r.files, files...)
 }
 
 // Apply imports a package, dispatching on its tier.
@@ -48,32 +85,59 @@ func Apply(pkgPath string, in *clv.Instance, opts Options) (*Report, error) {
 		return nil, err
 	}
 	defer os.RemoveAll(stage)
+
+	if err := operatorGuard(meta, in, opts); err != nil {
+		return nil, err
+	}
+
+	var rep *Report
 	switch {
 	case meta.Tier == 4:
-		return applyWorkspaceHeavy(stage, meta, in)
+		rep, err = applyWorkspaceHeavy(stage, meta, in, opts)
 	case meta.Tier == 3:
-		return applyWorkspace(stage, meta, in, opts)
+		rep, err = applyWorkspace(stage, meta, in, opts)
 	default:
-		return applyPersona(stage, meta, in, opts)
+		rep, err = applyPersona(stage, meta, in, opts)
 	}
-}
-
-// applyWorkspaceHeavy overlays the Tier-4 heavy dirs onto an ALREADY-imported
-// Tier-3 workspace (§8a: the add-on is paired, never standalone).
-func applyWorkspaceHeavy(stage string, meta pkg.Meta, in *clv.Instance) (*Report, error) {
-	ws, ok := in.WorkspaceByName(meta.WorkspaceName)
-	if !ok {
-		return nil, fmt.Errorf("Tier 4 heavy add-on requires workspace %q to already exist — import its Tier 3 package first", meta.WorkspaceName)
+	if err != nil {
+		return nil, err
 	}
-	rep := &Report{Tier: 4, PersonaName: meta.WorkspaceName,
-		ReviewNote: "heavy add-on overlaid onto the existing workspace"}
-	if src := filepath.Join(stage, "workspace-heavy"); dirExists(src) {
-		if err := pkg.CopyTree(src, ws.Path, nil); err != nil {
-			return nil, err
+	rep.Mode = string(opts.mode())
+	rep.DryRun = opts.DryRun
+	if !opts.DryRun {
+		if err := writeReceipt(rep, in, opts); err != nil {
+			rep.warn("could not write import receipt: %v", err)
 		}
-		rep.Placed = append(rep.Placed, "workspace-heavy")
 	}
 	return rep, nil
+}
+
+// operatorGuard enforces S15: don't sync the Sync Operator (§19.3). A self-overwrite
+// (incoming id already an operator on this machine) is a HARD block regardless of the
+// override; any other operator package needs the explicit --allow-operator-sync.
+func operatorGuard(meta pkg.Meta, in *clv.Instance, opts Options) error {
+	incomingOperator := clv.IsOperatorMarker(meta.Template, meta.PersonaName)
+	var rosterOp *pkg.RosterEntry
+	for i := range meta.Roster {
+		if clv.IsOperatorMarker(meta.Roster[i].Template, meta.Roster[i].Name) {
+			rosterOp = &meta.Roster[i]
+			break
+		}
+	}
+	if !incomingOperator && rosterOp == nil {
+		return nil
+	}
+	ops := in.OperatorIDs()
+	if incomingOperator && ops[meta.PersonaID] {
+		return fmt.Errorf("refusing to import the Sync Operator over the operator already on this machine (id %s) — this is never allowed; run the import from a different persona if you truly mean to replace it", meta.PersonaID)
+	}
+	if rosterOp != nil && ops[rosterOp.ID] {
+		return fmt.Errorf("workspace package carries a Sync Operator (%q) whose id matches this machine's operator — refusing to overwrite the live operator", rosterOp.Name)
+	}
+	if !opts.AllowOperatorSync {
+		return fmt.Errorf("this package contains the Sync Operator persona, which is machine-local infrastructure, not portable content (§19.3) — re-run with AllowOperatorSync only if you deliberately intend to move it")
+	}
+	return nil
 }
 
 // Inspect verifies the signature, decrypts, and verifies the manifest, returning
@@ -153,12 +217,15 @@ func openPackage(pkgPath string, opts Options) (string, pkg.Meta, error) {
 }
 
 func applyPersona(stage string, meta pkg.Meta, in *clv.Instance, opts Options) (*Report, error) {
+	mode := opts.mode()
 	rep := &Report{PersonaID: meta.PersonaID, PersonaName: meta.PersonaName, Tier: meta.Tier,
 		ReviewNote: "imported persona definition + memory are externally sourced; review before relying on this Staff member"}
 	lname := clv.Slug(meta.PersonaName)
 
-	if existing, _ := in.FindPersona(meta.PersonaID); existing != nil && !opts.Force {
-		return nil, fmt.Errorf("collision: persona %q (%s) already on target; use Force to overwrite", existing.Name, existing.ID)
+	existing, _ := in.FindPersona(meta.PersonaID)
+	if existing != nil && mode == clv.ModeSkip {
+		rep.plan("persona %s exists — skip mode, nothing changed", meta.PersonaName)
+		return rep, nil
 	}
 
 	entry, err := os.ReadFile(filepath.Join(stage, "definition", "staff-entry.json"))
@@ -169,76 +236,130 @@ func applyPersona(stage string, meta pkg.Meta, in *clv.Instance, opts Options) (
 	if err != nil {
 		return nil, err
 	}
-	if err := in.SpliceStaffEntry(prof, entry, meta.PersonaID, opts.Force); err != nil {
+
+	action, changed, preserved, err := in.MergeStaffEntry(prof, entry, meta.PersonaID, mode, opts.DryRun)
+	if err != nil {
 		return nil, err
 	}
-	rep.BackedUp = append(rep.BackedUp, "profiles/"+prof+"/staff.json")
-	rep.Placed = append(rep.Placed, "definition")
-
-	placeTemplate(stage, "", meta.Template, in, rep)
-	placeMemory(stage, lname, in, rep, opts.Force)
-
-	srcH := filepath.Join(stage, "history", "staff-"+meta.PersonaID+".json")
-	if _, err := os.Stat(srcH); err == nil {
-		if err := pkg.CopyFile(srcH, filepath.Join(in.DataDir, "profiles", prof, "agent-history", "staff-"+meta.PersonaID+".json")); err != nil {
-			return nil, err
-		}
-		rep.Placed = append(rep.Placed, "history")
+	rep.PortableUpdated, rep.MachineLocalKept = changed, preserved
+	switch action {
+	case "created":
+		rep.plan("definition: create new persona %s", meta.PersonaName)
+	case "merged":
+		rep.plan("definition: merge — portable updated %v, machine-local preserved %v", orNone(changed), orNone(preserved))
+	case "overwritten":
+		rep.plan("definition: overwrite whole entry")
+	}
+	if !opts.DryRun {
+		rep.BackedUp = append(rep.BackedUp, "profiles/"+prof+"/staff.json")
+		rep.placed("definition", filepath.Join(in.DataDir, "profiles", prof, "staff.json"))
 	}
 
-	mergeResume(stage, "", prof, in, rep)
+	placeTemplate(stage, "", meta.Template, in, rep, opts)
+	mergeMemory(stage, lname, in, rep, opts)
+	mergeHistory(stage, "", meta.PersonaID, prof, in, rep, opts)
+	mergeResume(stage, "", prof, in, rep, opts)
 	return rep, nil
 }
 
 func applyWorkspace(stage string, meta pkg.Meta, in *clv.Instance, opts Options) (*Report, error) {
-	rep := &Report{Tier: meta.Tier, PersonaName: meta.WorkspaceName,
+	mode := opts.mode()
+	rep := &Report{Tier: meta.Tier, PersonaName: meta.WorkspaceName, WorkspaceName: meta.WorkspaceName,
 		ReviewNote: "imported workspace + roster are externally sourced; review before relying on them"}
 
-	ws, created, err := in.EnsureWorkspace(meta.WorkspaceName, opts.WorkspacePath)
+	ws, created, err := in.EnsureWorkspaceMaybe(meta.WorkspaceName, opts.WorkspacePath, opts.DryRun)
 	if err != nil {
 		return nil, err
 	}
+	rep.WorkspaceID = ws.ID
 	if created {
-		rep.Placed = append(rep.Placed, "workspace-registered:"+ws.Name)
+		rep.plan("workspace: register %q at %s", ws.Name, ws.Path)
+		if !opts.DryRun {
+			rep.placed("workspace-registered:" + ws.Name)
+		}
+	} else {
+		rep.plan("workspace: %q already registered", ws.Name)
 	}
 
 	if wsSrc := filepath.Join(stage, "workspace"); dirExists(wsSrc) {
-		if err := pkg.CopyTree(wsSrc, ws.Path, nil); err != nil {
-			return nil, err
+		rep.plan("workspace: copy content tree")
+		if !opts.DryRun {
+			if err := pkg.CopyTree(wsSrc, ws.Path, nil); err != nil {
+				return nil, err
+			}
+			rep.placed("workspace-content")
 		}
-		rep.Placed = append(rep.Placed, "workspace-content")
 	}
 
 	prof, err := in.DefaultProfile()
 	if err != nil {
 		return nil, err
 	}
+	ops := in.OperatorIDs()
 	for _, r := range meta.Roster {
+		if clv.IsOperatorMarker(r.Template, r.Name) && !opts.AllowOperatorSync {
+			rep.SkippedScopes = append(rep.SkippedScopes, "operator-guarded:"+r.Name)
+			rep.plan("roster: SKIP Sync Operator %q (S15 guard)", r.Name)
+			continue
+		}
+		if ops[r.ID] {
+			rep.SkippedScopes = append(rep.SkippedScopes, "operator-live:"+r.Name)
+			continue
+		}
 		rdir := filepath.Join(stage, "roster", r.Lname)
 		entry, err := os.ReadFile(filepath.Join(rdir, "definition", "staff-entry.json"))
 		if err != nil {
 			continue
 		}
-		if existing, _ := in.FindPersona(r.ID); existing != nil && !opts.Force {
+		if existing, _ := in.FindPersona(r.ID); existing != nil && mode == clv.ModeSkip {
 			rep.SkippedScopes = append(rep.SkippedScopes, "persona-exists:"+r.Name)
 			continue
 		}
-		if err := in.SpliceStaffEntry(prof, entry, r.ID, opts.Force); err != nil {
+		action, _, _, err := in.MergeStaffEntry(prof, entry, r.ID, mode, opts.DryRun)
+		if err != nil {
 			return nil, err
 		}
-		placeTemplate(rdir, "", r.Template, in, rep)
-		srcH := filepath.Join(rdir, "history", "staff-"+r.ID+".json")
-		if _, err := os.Stat(srcH); err == nil {
-			_ = pkg.CopyFile(srcH, filepath.Join(in.DataDir, "profiles", prof, "agent-history", "staff-"+r.ID+".json"))
+		rep.plan("roster: %s persona %s", action, r.Name)
+		placeTemplate(rdir, "", r.Template, in, rep, opts)
+		mergeHistory(rdir, "", r.ID, prof, in, rep, opts)
+		if !opts.DryRun {
+			rep.placed("persona:" + r.Name)
 		}
-		rep.Placed = append(rep.Placed, "persona:"+r.Name)
+	}
+	return rep, nil
+}
+
+// applyWorkspaceHeavy overlays the Tier-4 heavy dirs onto an ALREADY-imported
+// Tier-3 workspace (§8a: the add-on is paired, never standalone).
+func applyWorkspaceHeavy(stage string, meta pkg.Meta, in *clv.Instance, opts Options) (*Report, error) {
+	ws, ok := in.WorkspaceByName(meta.WorkspaceName)
+	if !ok {
+		return nil, fmt.Errorf("Tier 4 heavy add-on requires workspace %q to already exist — import its Tier 3 package first", meta.WorkspaceName)
+	}
+	rep := &Report{Tier: 4, PersonaName: meta.WorkspaceName, WorkspaceName: meta.WorkspaceName, WorkspaceID: ws.ID,
+		ReviewNote: "heavy add-on overlaid onto the existing workspace"}
+	if src := filepath.Join(stage, "workspace-heavy"); dirExists(src) {
+		rep.plan("overlay heavy/regenerable content onto %q", ws.Name)
+		if !opts.DryRun {
+			if err := pkg.CopyTree(src, ws.Path, nil); err != nil {
+				return nil, err
+			}
+			rep.placed("workspace-heavy")
+		}
 	}
 	return rep, nil
 }
 
 // --- shared helpers ---
 
-func placeTemplate(root, subdir, template string, in *clv.Instance, rep *Report) {
+func orNone[T any](s []T) any {
+	if len(s) == 0 {
+		return "none"
+	}
+	return s
+}
+
+func placeTemplate(root, subdir, template string, in *clv.Instance, rep *Report, opts Options) {
 	if template == "" {
 		return
 	}
@@ -250,17 +371,25 @@ func placeTemplate(root, subdir, template string, in *clv.Instance, rep *Report)
 	if _, err := os.Stat(dstT); err == nil {
 		return // never overwrite an existing template
 	}
+	rep.plan("template: place %s", template)
+	if opts.DryRun {
+		return
+	}
 	if pkg.CopyFile(srcT, dstT) == nil {
-		rep.Placed = append(rep.Placed, "template:"+template)
+		rep.placed("template:"+template, dstT)
 	}
 }
 
-func placeMemory(stage, lname string, in *clv.Instance, rep *Report, force bool) {
+// mergeMemory unions the packaged memory into the target. In sync mode it is a
+// per-file union (identical files skipped, differing files backed up then updated);
+// in overwrite mode the scope dir is replaced wholesale (§17.2).
+func mergeMemory(stage, lname string, in *clv.Instance, rep *Report, opts Options) {
 	memRoot := filepath.Join(stage, "memory")
 	ents, err := os.ReadDir(memRoot)
 	if err != nil {
 		return
 	}
+	overwrite := opts.mode() == clv.ModeOverwrite
 	for _, e := range ents {
 		if !e.IsDir() {
 			continue
@@ -280,17 +409,91 @@ func placeMemory(stage, lname string, in *clv.Instance, rep *Report, force bool)
 			continue
 		}
 		dstDir := filepath.Join(clv.StaffDir(base), lname)
-		if force {
-			_ = os.RemoveAll(dstDir)
-		}
-		_ = os.MkdirAll(filepath.Dir(dstDir), 0o755)
-		if os.CopyFS(dstDir, os.DirFS(srcDir)) == nil {
-			rep.Placed = append(rep.Placed, "memory/"+scope)
+		added, updated := mergeDir(srcDir, dstDir, overwrite, opts.DryRun, rep)
+		rep.plan("memory/%s: +%d new, ~%d updated", scope, added, updated)
+		if !opts.DryRun {
+			rep.placed("memory/" + scope)
 		}
 	}
 }
 
-func mergeResume(stage, subdir, prof string, in *clv.Instance, rep *Report) {
+// mergeDir copies srcDir into dstDir file-by-file. Returns counts of added and updated
+// files. Differing existing files are backed up (S7) unless overwrite replaced the tree.
+func mergeDir(srcDir, dstDir string, overwrite, dryRun bool, rep *Report) (added, updated int) {
+	if overwrite && !dryRun {
+		_ = os.RemoveAll(dstDir)
+	}
+	filepath.Walk(srcDir, func(p string, fi os.FileInfo, err error) error {
+		if err != nil || fi.IsDir() {
+			return nil
+		}
+		rel, _ := filepath.Rel(srcDir, p)
+		dst := filepath.Join(dstDir, rel)
+		sb, _ := os.ReadFile(p)
+		if db, derr := os.ReadFile(dst); derr == nil {
+			if string(db) == string(sb) {
+				return nil // identical: nothing to do
+			}
+			updated++
+			if !dryRun {
+				_ = os.WriteFile(dst+".clvsync-bak", db, 0o644)
+			}
+		} else {
+			added++
+		}
+		if !dryRun {
+			_ = os.MkdirAll(filepath.Dir(dst), 0o755)
+			if os.WriteFile(dst, sb, 0o644) == nil {
+				rep.files = append(rep.files, dst) // hash into the receipt
+			}
+		}
+		return nil
+	})
+	return added, updated
+}
+
+// mergeHistory applies the packaged transcript under the D13 newest-wins policy:
+// take the incoming transcript only if it is newer (savedAt) or larger; back up any
+// replaced transcript and warn if the two have diverged.
+func mergeHistory(root, subdir, id, prof string, in *clv.Instance, rep *Report, opts Options) {
+	srcH := filepath.Join(root, subdir, "history", "staff-"+id+".json")
+	sb, err := os.ReadFile(srcH)
+	if err != nil {
+		return
+	}
+	dst := filepath.Join(in.DataDir, "profiles", prof, "agent-history", "staff-"+id+".json")
+	db, _ := os.ReadFile(dst)
+	take, diverged := clv.HistoryDecision(db, sb)
+	if opts.mode() == clv.ModeOverwrite {
+		take = true
+	}
+	if diverged {
+		rep.warn("history for %s diverged between machines; kept the %s copy (a .clvsync-bak preserves the other)", id, pick(take, "incoming", "local"))
+	}
+	if !take {
+		rep.plan("history: keep local (newer or identical)")
+		return
+	}
+	rep.plan("history: take incoming transcript")
+	if opts.DryRun {
+		return
+	}
+	if len(db) > 0 {
+		_ = os.WriteFile(dst+".clvsync-bak", db, 0o644)
+	}
+	if err := pkg.CopyFile(srcH, dst); err == nil {
+		rep.placed("history", dst)
+	}
+}
+
+func pick(b bool, yes, no string) string {
+	if b {
+		return yes
+	}
+	return no
+}
+
+func mergeResume(stage, subdir, prof string, in *clv.Instance, rep *Report, opts Options) {
 	b, err := os.ReadFile(filepath.Join(stage, subdir, "resume", "records.json"))
 	if err != nil {
 		return
@@ -315,22 +518,43 @@ func mergeResume(stage, subdir, prof string, in *clv.Instance, rep *Report) {
 				rep.SkippedScopes = append(rep.SkippedScopes, "session:"+scope)
 			}
 		}
+		for _, rec := range applied {
+			rep.SessionIDs = append(rep.SessionIDs, fmt.Sprint(rec["sessionId"]))
+		}
 		if len(applied) > 0 {
-			if in.MergeSessions(prof, applied) == nil {
-				rep.Placed = append(rep.Placed, "resume/sessions")
+			rep.plan("resume: merge %d session record(s)", len(applied))
+			if !opts.DryRun && in.MergeSessions(prof, applied) == nil {
+				rep.placed("resume/sessions")
 			}
 		}
 	}
-	if es := readEntries(filepath.Join(stage, subdir, "resume", "session-summaries.json")); len(es) > 0 {
+	if es := readEntries(filepath.Join(stage, subdir, "resume", "session-summaries.json")); len(es) > 0 && !opts.DryRun {
 		if in.MergeResumeEntries(prof, "session-summaries.json", es) == nil {
-			rep.Placed = append(rep.Placed, "resume/summaries")
+			rep.placed("resume/summaries")
 		}
 	}
-	if es := readEntries(filepath.Join(stage, subdir, "resume", "resume-exclusions.json")); len(es) > 0 {
+	if es := readEntries(filepath.Join(stage, subdir, "resume", "resume-exclusions.json")); len(es) > 0 && !opts.DryRun {
 		if in.MergeResumeEntries(prof, "resume-exclusions.json", es) == nil {
-			rep.Placed = append(rep.Placed, "resume/exclusions")
+			rep.placed("resume/exclusions")
 		}
 	}
+}
+
+// writeReceipt records what the import placed for the restart-time reconciliation.
+func writeReceipt(rep *Report, in *clv.Instance, opts Options) error {
+	path := opts.ReceiptPath
+	if path == "" {
+		path = filepath.Join(in.DataDir, "import-receipt.json")
+	}
+	r := newReceipt(in, opts.mode(), rep)
+	for _, f := range rep.files {
+		r.addFile(f)
+	}
+	if err := r.Write(path); err != nil {
+		return err
+	}
+	rep.ReceiptPath = path
+	return nil
 }
 
 func readEntries(path string) []json.RawMessage {
