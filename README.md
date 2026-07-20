@@ -46,7 +46,7 @@ Cross-platform: resolves the Clairvoyance data directory per OS (Windows `%APPDA
 
 - [x] **Phase 0** — core: per-OS data-dir resolver, secret scanner, safe-path guard, SHA-256 manifest, CLI skeleton *(done, unit-tested)*
 - [x] **Phase 1** — Tier 1 export/import with `age` encryption + `minisign` signing; `export`/`import`/`keygen` CLI *(done; round-trip self-test + validated against live instance data)*
-- [ ] **Phase 2** — Tier 2 Universal Resume
+- [x] **Phase 2** — Tier 2 Universal Resume (session records + summaries + exclusions; workspace binding remapped, provider/model preserved) *(done; round-trip + live-data validated)*
 - [ ] **Phase 3** — Tier 3 workspace + `workspace-prep`
 - [ ] **Phase 4** — Tier 4 heavy add-on + space-aware fail-down
 - [ ] **Phase 5** — harden, docs, signed cross-platform release

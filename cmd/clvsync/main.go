@@ -110,6 +110,7 @@ func cmdExport(args []string) error {
 	fs := flag.NewFlagSet("export", flag.ExitOnError)
 	persona := fs.String("persona", "", "persona name or staff id (required)")
 	out := fs.String("out", "", "output package path (required)")
+	tier := fs.Int("tier", 1, "1 = portable persona; 2 = + Universal Resume (cross-model session resume)")
 	recipient := fs.String("recipient", "", "age X25519 recipient public key (encrypt to key)")
 	signKey := fs.String("sign-key", "", "minisign private key file to sign with")
 	allowSecrets := fs.Bool("allow-secrets", false, "override the secret-scan block")
@@ -126,7 +127,7 @@ func cmdExport(args []string) error {
 	if err != nil {
 		return err
 	}
-	opts := export.Options{Recipient: *recipient, AllowSecrets: *allowSecrets, Passphrase: os.Getenv("CLVSYNC_PASSPHRASE")}
+	opts := export.Options{Tier: *tier, Recipient: *recipient, AllowSecrets: *allowSecrets, Passphrase: os.Getenv("CLVSYNC_PASSPHRASE")}
 	if *signKey != "" {
 		priv, err := loadPrivateKey(*signKey)
 		if err != nil {

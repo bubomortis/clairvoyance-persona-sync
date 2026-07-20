@@ -26,6 +26,7 @@ import (
 
 // Options controls encryption, signing, and the secret-scan gate.
 type Options struct {
+	Tier         int                  // 1 = portable; 2 = + Universal Resume artifacts
 	Passphrase   string               // age passphrase mode
 	Recipient    string               // age X25519 recipient ("age1...")
 	SignKey      *minisign.PrivateKey // minisign detached signature
@@ -40,7 +41,18 @@ type Result struct {
 	Encrypted   bool
 }
 
-// Persona exports one persona to outPath (Tier 1).
+func writeJSON(path string, v any) error {
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	if string(b) == "null" {
+		b = []byte("[]")
+	}
+	return os.WriteFile(path, b, 0o644)
+}
+
+// Persona exports one persona to outPath (Tier 1, or Tier 2 with resume artifacts).
 func Persona(in *clv.Instance, p *clv.Persona, outPath string, opts Options) (*Result, error) {
 	stage, err := os.MkdirTemp("", "clvsync-export-*")
 	if err != nil {
@@ -82,6 +94,34 @@ func Persona(in *clv.Instance, p *clv.Persona, outPath string, opts Options) (*R
 	if p.History != "" {
 		if err := pkg.CopyFile(p.History, filepath.Join(stage, "history", "staff-"+p.ID+".json")); err != nil {
 			return nil, err
+		}
+	}
+
+	// Tier 2: Universal Resume artifacts (records tokenized by workspace scope;
+	// provider/model kept — Universal Resume resumes across providers).
+	if opts.Tier >= 2 {
+		r := in.LoadResume(p)
+		if len(r.Sessions) > 0 {
+			rdir := filepath.Join(stage, "resume")
+			if err := os.MkdirAll(rdir, 0o755); err != nil {
+				return nil, err
+			}
+			var recs []map[string]any
+			for _, s := range r.Sessions {
+				s.Rec["workspacePath"] = clv.WSToken(s.Scope)
+				s.Rec["workspaceId"] = clv.WSIDToken(s.Scope)
+				recs = append(recs, s.Rec)
+			}
+			if err := writeJSON(filepath.Join(rdir, "records.json"), recs); err != nil {
+				return nil, err
+			}
+			if err := writeJSON(filepath.Join(rdir, "session-summaries.json"), r.Summaries); err != nil {
+				return nil, err
+			}
+			if err := writeJSON(filepath.Join(rdir, "resume-exclusions.json"), r.Exclusions); err != nil {
+				return nil, err
+			}
+			meta.Tier = 2
 		}
 	}
 

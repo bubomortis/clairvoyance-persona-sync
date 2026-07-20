@@ -189,5 +189,60 @@ func Apply(pkgPath string, in *clv.Instance, opts Options) (*Report, error) {
 		rep.Placed = append(rep.Placed, "history")
 	}
 
+	// 11. Tier 2: Universal Resume artifacts (remap scope tokens -> target workspace binding)
+	if b, err := os.ReadFile(filepath.Join(stage, "resume", "records.json")); err == nil {
+		var recs []map[string]any
+		if json.Unmarshal(b, &recs) == nil {
+			var applied []map[string]any
+			for _, rec := range recs {
+				scope, ok := clv.ParseScopeToken(fmt.Sprint(rec["workspacePath"]))
+				if !ok {
+					scope = "home"
+				}
+				if scope == "home" {
+					rec["workspacePath"] = in.DataDir
+					rec["workspaceId"] = in.HomeWorkspaceID()
+					applied = append(applied, rec)
+				} else if ws, ok := in.WorkspaceByName(scope); ok {
+					rec["workspacePath"] = ws.Path
+					rec["workspaceId"] = ws.ID
+					applied = append(applied, rec)
+				} else {
+					rep.SkippedScopes = append(rep.SkippedScopes, "session:"+scope)
+				}
+			}
+			if len(applied) > 0 {
+				if err := in.MergeSessions(prof, applied); err != nil {
+					return nil, err
+				}
+				rep.Placed = append(rep.Placed, "resume/sessions")
+			}
+		}
+		if es := readEntries(filepath.Join(stage, "resume", "session-summaries.json")); len(es) > 0 {
+			if err := in.MergeResumeEntries(prof, "session-summaries.json", es); err != nil {
+				return nil, err
+			}
+			rep.Placed = append(rep.Placed, "resume/summaries")
+		}
+		if es := readEntries(filepath.Join(stage, "resume", "resume-exclusions.json")); len(es) > 0 {
+			if err := in.MergeResumeEntries(prof, "resume-exclusions.json", es); err != nil {
+				return nil, err
+			}
+			rep.Placed = append(rep.Placed, "resume/exclusions")
+		}
+	}
+
 	return rep, nil
+}
+
+func readEntries(path string) []json.RawMessage {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var arr []json.RawMessage
+	if json.Unmarshal(b, &arr) != nil {
+		return nil
+	}
+	return arr
 }

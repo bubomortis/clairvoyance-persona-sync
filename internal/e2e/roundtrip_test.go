@@ -54,7 +54,102 @@ func buildSource(t *testing.T) (dataDir string, wantHome, wantWS, wantHist strin
 	write(t, filepath.Join(wsPath, ".Clairvoyance", "staff", "testy", "notes.md"), wantWS)
 
 	write(t, filepath.Join(dataDir, "neurons", "personas", "Custom.md"), "# Custom persona template")
+
+	// Tier 2 Universal Resume artifacts
+	writeJSONFile(t, filepath.Join(dataDir, "profiles", "prof1", "agent-sessions.json"), map[string]any{
+		"version": 1, "sessions": []map[string]any{{
+			"sessionId": "sess-testy-1", "staffId": staffID, "workspaceId": "workspace-testws",
+			"workspacePath": wsPath, "provider": "claude", "model": "claude-opus-4-8", "runtimeId": "acp-" + staffID,
+		}},
+	})
+	writeJSONFile(t, filepath.Join(dataDir, "profiles", "prof1", "session-summaries.json"), map[string]any{
+		"version": 1, "entries": []map[string]any{
+			{"sessionId": "sess-testy-1", "text": "the summary", "updatedAt": "t"},
+			{"sessionId": "other-sess", "text": "unrelated"},
+		},
+	})
+	writeJSONFile(t, filepath.Join(dataDir, "profiles", "prof1", "resume-exclusions.json"), map[string]any{
+		"version": 1, "entries": []map[string]any{{"sessionId": "sess-testy-1", "reason": "trim", "addedAt": "t"}},
+	})
 	return
+}
+
+func writeJSONFile(t *testing.T, path string, v any) {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, path, string(b))
+}
+
+func TestRoundtrip_Tier2_UniversalResume(t *testing.T) {
+	srcDir, _, _, _ := buildSource(t)
+	src, _ := clv.Open(srcDir)
+	p, err := src.FindPersona("Testy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkgPath := filepath.Join(t.TempDir(), "testy2.cvpkg.age")
+	if _, err := export.Persona(src, p, pkgPath, export.Options{Tier: 2, Passphrase: "pw-tier2-strong-enough"}); err != nil {
+		t.Fatalf("export tier2: %v", err)
+	}
+
+	dstDir := t.TempDir()
+	dstWS := filepath.Join(dstDir, "ws-relocated")
+	write(t, filepath.Join(dstDir, "clairvoyance-store.json"), storeJSON(t, dstDir, "TestWS", dstWS))
+	write(t, filepath.Join(dstDir, "profiles", "prof2", "staff.json"), "[]")
+
+	dst, _ := clv.Open(dstDir)
+	rep, err := importer.Apply(pkgPath, dst, importer.Options{Passphrase: "pw-tier2-strong-enough"})
+	if err != nil {
+		t.Fatalf("import tier2: %v", err)
+	}
+	if rep.Tier != 2 {
+		t.Fatalf("expected tier 2, got %d", rep.Tier)
+	}
+
+	// session record: remapped workspace path, provider preserved
+	var sdoc struct {
+		Sessions []map[string]any `json:"sessions"`
+	}
+	readJSON(t, filepath.Join(dstDir, "profiles", "prof2", "agent-sessions.json"), &sdoc)
+	if len(sdoc.Sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(sdoc.Sessions))
+	}
+	s := sdoc.Sessions[0]
+	if s["sessionId"] != "sess-testy-1" {
+		t.Fatalf("wrong sessionId: %v", s["sessionId"])
+	}
+	if s["workspacePath"] != dstWS {
+		t.Fatalf("workspacePath not remapped: got %v want %v", s["workspacePath"], dstWS)
+	}
+	if s["provider"] != "claude" {
+		t.Fatalf("provider should be preserved for Universal Resume, got %v", s["provider"])
+	}
+
+	// summaries filtered to this persona's session only (other-sess excluded)
+	var sumDoc struct {
+		Entries []map[string]any `json:"entries"`
+	}
+	readJSON(t, filepath.Join(dstDir, "profiles", "prof2", "session-summaries.json"), &sumDoc)
+	if len(sumDoc.Entries) != 1 || sumDoc.Entries[0]["sessionId"] != "sess-testy-1" {
+		t.Fatalf("summaries not filtered/merged correctly: %+v", sumDoc.Entries)
+	}
+	if _, err := os.Stat(filepath.Join(dstDir, "profiles", "prof2", "resume-exclusions.json")); err != nil {
+		t.Fatalf("resume-exclusions not merged")
+	}
+}
+
+func readJSON(t *testing.T, path string, v any) {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(b, v); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestRoundtrip_EncryptedSigned(t *testing.T) {
