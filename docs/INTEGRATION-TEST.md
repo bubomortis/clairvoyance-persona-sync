@@ -128,24 +128,73 @@ Either way it's non-destructive: Tier 1 (identity + full history) is already imp
 
 ## Step 6 (optional) — round-trip sync-back (exercises Phase 6)
 
-Confirms the create-or-merge sync preserves each machine's local runtime. On **B**, note
-the persona's model/runtime (they should be B's, not A's — machine-local is preserved).
-Then chat with it once on B, export **B → A**, and sync back into A:
+Confirms the create-or-merge sync preserves each machine's local runtime **and** that new
+work done on B travels home. On **B**, note the persona's model/runtime (they should be B's,
+not A's — machine-local is preserved).
+
+### 6a — do some real work on B, then have it record a result in staff memory
+
+Give the resumed persona a task on B (e.g. installing the Clairvoyance Versioning Backup
+System). Then — **before exporting** — have it jot a short outcome into its **Clairvoyance
+staff memory**, so the result is a durable artifact that syncs home rather than living only
+in the conversation transcript.
+
+> Why this matters: `clvsync` captures the Clairvoyance staff-memory dir
+> (`<data-dir>/.Clairvoyance/staff/<persona-slug>/`) plus history and resume — but **not**
+> the Claude Code `~/.claude` project memory. A note written into staff memory is the
+> reliable way to carry a finding back; it also gives the sync-back a concrete file whose
+> arrival on A you can verify.
+
+Ask the persona on B, in chat, something like:
+
+> "Append a short dated note to your Clairvoyance staff memory recording the result of the
+> backup-system install — what worked, what didn't, and any fresh-machine gotchas."
+
+That writes to, e.g. (persona "Reegor" → slug `reegor`):
+
+```
+<B-data-dir>/.Clairvoyance/staff/reegor/index.md      # or a new file in that folder
+```
+
+Confirm the file exists on B before you export (it's what you'll check for on A):
+
+```sh
+ls "<B-data-dir>/.Clairvoyance/staff/reegor/"
+```
+
+### 6b — export B → A and sync back
 
 ```sh
 # On B:
 ./clvsync export --persona "<Name>" --tier 2 --out back.cvpkg.age   # CLVSYNC_PASSPHRASE set
+tar -tf back.cvpkg.age 2>/dev/null | grep memory/   # (unencrypted only) sanity: the note is inside
 # Transport back to A, then on A (app closed):
 ./clvsync import --in back.cvpkg.age --dry-run        # preview: expect "merge — machine-local preserved [...]"
+#                                                     #  and "memory/home: +N new / ~N updated"
 ./clvsync import --in back.cvpkg.age --receipt rt.json
 ./clvsync verify-import --receipt rt.json             # after restart
+```
+
+Because Reegor already exists on A this is a **merge**, so expect a **history divergence
+warning** (A's session and B's session are different branches — A's transcript is preserved
+as `*.clvsync-bak`, and both sessions stay resumable). That warning is the feature working.
+
+### 6c — confirm the B-side note arrived on A
+
+```sh
+# On A, the staff-memory note written on B should now be present (its prior version, if any,
+# is preserved as .clvsync-bak):
+ls "<A-data-dir>/.Clairvoyance/staff/reegor/"
 ```
 
 | Check | Result |
 | ----- | ------ |
 | B's persona kept **B's** model/runtime after the A→B import (machine-local preserved) | ☐ yes ☐ no |
+| B wrote the outcome note into its staff memory before export | ☐ yes ☐ no |
 | Sync-back dry-run reported a **merge** (not a blind overwrite) with machine-local preserved | ☐ yes ☐ no |
+| Sync-back showed the expected **history divergence** warning (A's transcript kept as `.clvsync-bak`) | ☐ yes ☐ no |
 | After sync-back, A still has **A's** model/runtime (not B's) | ☐ yes ☐ no |
+| **The B-side staff-memory note is present on A** after the sync-back | ☐ yes ☐ no |
 | verify-import all `[PASS]` on both machines | ☐ yes ☐ no |
 
 *(The Sync Operator guard was already validated in Step 0c.)*
