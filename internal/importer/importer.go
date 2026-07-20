@@ -48,10 +48,32 @@ func Apply(pkgPath string, in *clv.Instance, opts Options) (*Report, error) {
 		return nil, err
 	}
 	defer os.RemoveAll(stage)
-	if meta.Tier >= 3 {
+	switch {
+	case meta.Tier == 4:
+		return applyWorkspaceHeavy(stage, meta, in)
+	case meta.Tier == 3:
 		return applyWorkspace(stage, meta, in, opts)
+	default:
+		return applyPersona(stage, meta, in, opts)
 	}
-	return applyPersona(stage, meta, in, opts)
+}
+
+// applyWorkspaceHeavy overlays the Tier-4 heavy dirs onto an ALREADY-imported
+// Tier-3 workspace (§8a: the add-on is paired, never standalone).
+func applyWorkspaceHeavy(stage string, meta pkg.Meta, in *clv.Instance) (*Report, error) {
+	ws, ok := in.WorkspaceByName(meta.WorkspaceName)
+	if !ok {
+		return nil, fmt.Errorf("Tier 4 heavy add-on requires workspace %q to already exist — import its Tier 3 package first", meta.WorkspaceName)
+	}
+	rep := &Report{Tier: 4, PersonaName: meta.WorkspaceName,
+		ReviewNote: "heavy add-on overlaid onto the existing workspace"}
+	if src := filepath.Join(stage, "workspace-heavy"); dirExists(src) {
+		if err := pkg.CopyTree(src, ws.Path, nil); err != nil {
+			return nil, err
+		}
+		rep.Placed = append(rep.Placed, "workspace-heavy")
+	}
+	return rep, nil
 }
 
 // openPackage verifies, decrypts, safely extracts, and verifies the manifest,

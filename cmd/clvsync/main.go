@@ -9,12 +9,15 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"aead.dev/minisign"
 
 	"github.com/bubomortis/clairvoyance-persona-sync/internal/clv"
 	"github.com/bubomortis/clairvoyance-persona-sync/internal/cryptobox"
 	"github.com/bubomortis/clairvoyance-persona-sync/internal/datadir"
+	"github.com/bubomortis/clairvoyance-persona-sync/internal/diskfree"
 	"github.com/bubomortis/clairvoyance-persona-sync/internal/export"
 	"github.com/bubomortis/clairvoyance-persona-sync/internal/importer"
 )
@@ -118,6 +121,7 @@ func cmdExport(args []string) error {
 	recipient := fs.String("recipient", "", "age X25519 recipient public key (encrypt to key)")
 	signKey := fs.String("sign-key", "", "minisign private key file to sign with")
 	allowSecrets := fs.Bool("allow-secrets", false, "override the secret-scan block")
+	includeHeavy := fs.Bool("include-heavy", false, "workspace: also emit the Tier 4 heavy add-on (space-gated)")
 	dataDir := fs.String("data-dir", "", "override Clairvoyance data dir")
 	fs.Parse(args)
 	if *out == "" || (*persona == "" && *workspace == "") {
@@ -162,7 +166,57 @@ func cmdExport(args []string) error {
 	if res.SigPath != "" {
 		fmt.Printf("signature: %s\n", res.SigPath)
 	}
+	if *workspace != "" && *includeHeavy {
+		return exportHeavy(in, *workspace, *out, opts)
+	}
 	return nil
+}
+
+// exportHeavy emits the Tier-4 add-on AFTER the Tier-3 package, gated on free space
+// at the target (§8a): if the heavy content won't fit, it is skipped, not truncated.
+func exportHeavy(in *clv.Instance, wsName, baseOut string, opts export.Options) error {
+	sz := export.HeavySize(in, wsName)
+	if sz == 0 {
+		fmt.Println("Tier 4: no heavy/regenerable content; skipped")
+		return nil
+	}
+	heavyOut := heavyName(baseOut)
+	dir := filepath.Dir(heavyOut)
+	if dir == "" {
+		dir = "."
+	}
+	if free, err := diskfree.Available(dir); err == nil && uint64(sz) > free {
+		fmt.Printf("Tier 4 SKIPPED (space-aware fail-down): heavy content ~%s, only %s free at target — workspace synced without regenerable content\n", human(sz), human(int64(free)))
+		return nil
+	}
+	res, err := export.WorkspaceHeavy(in, wsName, heavyOut, opts)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Tier 4 heavy add-on -> %s (encrypted=%v)\n", res.PackagePath, res.Encrypted)
+	return nil
+}
+
+func heavyName(out string) string {
+	for _, ext := range []string{".cvpkg.age", ".cvpkg"} {
+		if strings.HasSuffix(out, ext) {
+			return out[:len(out)-len(ext)] + "_heavy" + ext
+		}
+	}
+	return out + "_heavy"
+}
+
+func human(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
 func cmdWorkspacePrep(args []string) error {
