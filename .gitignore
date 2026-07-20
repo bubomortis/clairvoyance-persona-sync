@@ -1,0 +1,19 @@
+# Binaries
+/clvsync
+/clvsync.exe
+/dist/
+*.exe
+*.test
+
+# Go build/test artifacts
+/vendor/
+*.out
+
+# Local packages produced by the tool
+*.cvpkg
+*.cvpkg.age
+*.minisig
+
+# OS / editor
+.DS_Store
+Thumbs.db
