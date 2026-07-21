@@ -237,21 +237,32 @@ func applyPersona(stage string, meta pkg.Meta, in *clv.Instance, opts Options) (
 		return nil, err
 	}
 
+	// v0.1.1: repoint machine-local paths (shell.cwd) that don't exist on THIS machine,
+	// so a freshly created/overwritten persona starts without a manual cwd fix.
+	entry, repoints := repointDeadPaths(entry, in.DataDir)
+
 	action, changed, preserved, err := in.MergeStaffEntry(prof, entry, meta.PersonaID, mode, opts.DryRun)
 	if err != nil {
 		return nil, err
 	}
 	rep.PortableUpdated, rep.MachineLocalKept = changed, preserved
 	switch action {
-	case "created":
-		rep.plan("definition: create new persona %s", meta.PersonaName)
+	case "created", "overwritten":
+		if action == "created" {
+			rep.plan("definition: create new persona %s", meta.PersonaName)
+		} else {
+			rep.plan("definition: overwrite whole entry")
+		}
+		// These actions take the incoming machine-local fields, so surface repoints + advisories.
+		for _, r := range repoints {
+			rep.plan("definition: %s", r)
+		}
 		for _, w := range machineLocalAdvisories(entry) {
 			rep.warn("%s", w)
 		}
 	case "merged":
+		// Sync preserves the destination's machine-local runtime, so incoming paths are moot.
 		rep.plan("definition: merge — portable updated %v, machine-local preserved %v", orNone(changed), orNone(preserved))
-	case "overwritten":
-		rep.plan("definition: overwrite whole entry")
 	}
 	if !opts.DryRun {
 		rep.BackedUp = append(rep.BackedUp, "profiles/"+prof+"/staff.json")
@@ -318,11 +329,17 @@ func applyWorkspace(stage string, meta pkg.Meta, in *clv.Instance, opts Options)
 			rep.SkippedScopes = append(rep.SkippedScopes, "persona-exists:"+r.Name)
 			continue
 		}
+		entry, repoints := repointDeadPaths(entry, in.DataDir)
 		action, _, _, err := in.MergeStaffEntry(prof, entry, r.ID, mode, opts.DryRun)
 		if err != nil {
 			return nil, err
 		}
 		rep.plan("roster: %s persona %s", action, r.Name)
+		if action == "created" || action == "overwritten" {
+			for _, rp := range repoints {
+				rep.plan("roster %s: %s", r.Name, rp)
+			}
+		}
 		placeTemplate(rdir, "", r.Template, in, rep, opts)
 		mergeHistory(rdir, "", r.ID, prof, in, rep, opts)
 		if !opts.DryRun {
@@ -596,9 +613,7 @@ func machineLocalAdvisories(entry []byte) []string {
 		return nil
 	}
 	var out []string
-	if c := d.Shell.Cwd; c != "" && isAbsPathLike(c) {
-		out = append(out, fmt.Sprintf("definition's shell.cwd points at %q (from the source machine) — set it to a valid path on THIS machine before relying on Reegor's shell", c))
-	}
+	// shell.cwd is auto-repointed by repointDeadPaths, so it is no longer advised here.
 	if cmd := d.Shell.Command; cmd != "" && looksWindowsShell(cmd) {
 		out = append(out, fmt.Sprintf("definition's shell is %q — if this machine is not Windows, change the shell in the persona settings", cmd))
 	}
@@ -608,11 +623,43 @@ func machineLocalAdvisories(entry []byte) []string {
 	return out
 }
 
-func isAbsPathLike(p string) bool {
-	if len(p) >= 2 && p[1] == ':' { // C:\...
-		return true
+// repointDeadPaths rewrites machine-local path fields in an incoming definition that
+// don't exist on THIS machine (chiefly the source machine's shell.cwd), pointing them at
+// the target data dir so a freshly created/overwritten persona starts cleanly (v0.1.1).
+// A path that already exists here is left untouched. Returns the (possibly rewritten)
+// entry and a human list of what changed.
+func repointDeadPaths(entry json.RawMessage, dataDir string) (json.RawMessage, []string) {
+	var m map[string]json.RawMessage
+	if json.Unmarshal(entry, &m) != nil {
+		return entry, nil
 	}
-	return len(p) > 0 && (p[0] == '/' || p[0] == '\\')
+	shellRaw, ok := m["shell"]
+	if !ok {
+		return entry, nil
+	}
+	var shell map[string]json.RawMessage
+	if json.Unmarshal(shellRaw, &shell) != nil {
+		return entry, nil
+	}
+	var cwd string
+	if cwdRaw, ok := shell["cwd"]; !ok || json.Unmarshal(cwdRaw, &cwd) != nil {
+		return entry, nil
+	}
+	if cwd == "" || dirExists(cwd) {
+		return entry, nil // absent field or a path that exists here → nothing to do
+	}
+	nb, _ := json.Marshal(dataDir)
+	shell["cwd"] = nb
+	nsh, err := json.Marshal(shell)
+	if err != nil {
+		return entry, nil
+	}
+	m["shell"] = nsh
+	out, err := json.Marshal(m)
+	if err != nil {
+		return entry, nil
+	}
+	return out, []string{fmt.Sprintf("repointed shell.cwd %q → %q (source path absent on this machine)", cwd, dataDir)}
 }
 
 func looksWindowsShell(cmd string) bool {

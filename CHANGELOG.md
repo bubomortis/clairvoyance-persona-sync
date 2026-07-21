@@ -5,9 +5,15 @@ All notable changes to `clvsync` are documented here. Format loosely follows
 
 ## [Unreleased]
 
-_Planned for v0.1.1: on-import auto-repoint of machine-local paths (`shell.cwd`, runtime cwd)
-that don't exist on the target machine, so a freshly imported persona starts without a manual
-`cwd` fix._
+### Added
+- **On-import auto-repoint of dead machine-local paths (toward v0.1.1).** When an imported
+  persona's `shell.cwd` points at a path that doesn't exist on this machine (e.g. the source
+  machine's data dir), it is repointed to the target data dir so the persona starts without a
+  manual `cwd` fix — the "cwd does not exist" case seen in the first cross-machine import.
+  Applies to created/overwritten personas and workspace roster members; a `cwd` that already
+  exists is left untouched; sync-merges are unaffected (they keep the destination's shell).
+  Replaces the previous cwd advisory. Pending validation in the next two-machine test before
+  the `v0.1.1` tag.
 
 ## [0.1.0] — 2026-07-21
 

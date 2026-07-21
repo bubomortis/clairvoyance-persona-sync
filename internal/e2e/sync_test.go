@@ -256,17 +256,80 @@ func TestCreateAdvisories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var haveCwd, haveProvider bool
+	var haveProvider bool
 	for _, w := range rep.Warnings {
-		if strings.Contains(w, "shell.cwd") {
-			haveCwd = true
-		}
 		if strings.Contains(w, "provider=") {
 			haveProvider = true
 		}
+		if strings.Contains(w, "shell.cwd") {
+			t.Fatalf("shell.cwd should be auto-repointed, not advised: %v", rep.Warnings)
+		}
 	}
-	if !haveCwd || !haveProvider {
-		t.Fatalf("expected create-time advisories for shell.cwd and provider; got %v", rep.Warnings)
+	if !haveProvider {
+		t.Fatalf("expected a create-time provider advisory; got %v", rep.Warnings)
+	}
+	// shell.cwd (dead source path) should have been repointed via a plan line, not warned.
+	var haveRepoint bool
+	for _, pl := range rep.Plan {
+		if strings.Contains(pl, "repointed shell.cwd") {
+			haveRepoint = true
+		}
+	}
+	if !haveRepoint {
+		t.Fatalf("expected a shell.cwd repoint plan line; got %v", rep.Plan)
+	}
+}
+
+// TestCwdRepoint (v0.1.1): a created persona whose shell.cwd doesn't exist on the target
+// gets repointed to the target data dir; an existing cwd is left untouched.
+func TestCwdRepoint(t *testing.T) {
+	srcEntry := `{"id":"` + syncID + `","name":"Syncy","shell":{"type":"powershell","command":"powershell.exe","cwd":"Z:\\does\\not\\exist\\anywhere"}}`
+	srcDir := miniInstance(t, srcEntry)
+	src, _ := clv.Open(srcDir)
+	p, _ := src.FindPersona(syncID)
+	pkgPath := filepath.Join(t.TempDir(), "syncy.cvpkg")
+	export.Persona(src, p, pkgPath, export.Options{})
+
+	dstDir := miniInstance(t, `{"id":"other","name":"Other"}`)
+	dst, _ := clv.Open(dstDir)
+	rep, err := importer.Apply(pkgPath, dst, importer.Options{Mode: clv.ModeSync})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := entryOf(t, dstDir, syncID)
+	shell, ok := e["shell"].(map[string]any)
+	if !ok {
+		t.Fatalf("shell block missing: %v", e)
+	}
+	if shell["cwd"] != dstDir {
+		t.Fatalf("dead cwd not repointed to target data dir: got %v want %v", shell["cwd"], dstDir)
+	}
+	var sawPlan bool
+	for _, pl := range rep.Plan {
+		if strings.Contains(pl, "repointed shell.cwd") {
+			sawPlan = true
+		}
+	}
+	if !sawPlan {
+		t.Fatalf("expected a repoint plan line, got %v", rep.Plan)
+	}
+
+	// An existing cwd must be left untouched.
+	okEntry := `{"id":"` + syncID + `","name":"Syncy2","shell":{"cwd":"` + jsonPath(dstDir) + `"}}`
+	srcDir2 := miniInstance(t, okEntry)
+	src2, _ := clv.Open(srcDir2)
+	p2, _ := src2.FindPersona(syncID)
+	pkg2 := filepath.Join(t.TempDir(), "syncy2.cvpkg")
+	export.Persona(src2, p2, pkg2, export.Options{})
+	dstDir2 := miniInstance(t, `{"id":"other","name":"Other"}`)
+	dst2, _ := clv.Open(dstDir2)
+	if _, err := importer.Apply(pkg2, dst2, importer.Options{Mode: clv.ModeSync}); err != nil {
+		t.Fatal(err)
+	}
+	e2 := entryOf(t, dstDir2, syncID)
+	sh2 := e2["shell"].(map[string]any)
+	if sh2["cwd"] != dstDir {
+		t.Fatalf("existing cwd should be untouched: got %v want %v", sh2["cwd"], dstDir)
 	}
 }
 
