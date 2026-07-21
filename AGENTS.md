@@ -1,28 +1,56 @@
-# AGENTS.md — have Clairvoyance Staff set up and run clvsync for you
+# AGENTS.md — have Clairvoyance Staff install and run clvsync for you
 
-You don't have to touch a terminal. Paste one of the prompts below to a Clairvoyance
-Staff member and it will do the work. These are the same instructions a Staff agent
-should follow when asked to "set up persona sync" or "import this package."
+Instructions for an AI agent (Clairvoyance Staff or similar) asked to **install, set up, or run**
+Persona Sync on a user's machine. The user shouldn't have to touch a terminal — they paste one of
+the prompts below to a Staff member, and the agent does the work by following the steps here.
+
+**Repo:** `github.com/bubomortis/clairvoyance-persona-sync` · **Releases:**
+`github.com/bubomortis/clairvoyance-persona-sync/releases`
 
 ---
 
-## 1. One-time setup on a machine (create the Sync Operator)
+## 1. Install Persona Sync on a machine (Staff-directed, from GitHub)
 
-> **Prompt to Staff:** "Set up Clairvoyance Persona Sync on this machine."
+> **Prompt to Staff:** "Install Clairvoyance Persona Sync on this machine from GitHub."
 
-Staff steps:
+This section is the **authoritative install procedure** — read it fully and follow it in order.
 
-1. **Fetch the binary.** Download the `clvsync` build for this OS from the repo's GitHub
-   **Releases** (`clvsync-<os>-<arch>[.exe]`) plus its `.minisig` and `SHA256SUMS`.
-   Verify the checksum and (if a release signing key is published) the signature, then
-   place the binary somewhere on PATH. If no prebuilt binary exists for this platform,
-   fall back to `go build ./cmd/clvsync` from a clone.
-2. **Create the Sync Operator persona.** Add a Staff member named **Sync Operator** whose
-   knowledge template is **`Sync Operator`** (see `personas/Sync Operator.md`). That
-   `knowledgeTemplate` marker is load-bearing: it is how `clvsync` recognizes the operator
-   and refuses to sync it (guard S15).
-3. Tell the user setup is done and that they can now say "import the package on my Desktop"
-   or "export my <persona> to send to my other machine."
+**Prerequisites to confirm (report and stop if any is missing):** Clairvoyance ≥ 0.77.0 (Universal
+Resume); network access to `github.com`; a shell the agent can run `clvsync` from.
+
+**Idempotency first:** before changing anything, detect an existing install — if `clvsync datadir`
+already works *and* a **Sync Operator** Staff member exists, report that and **stop**. Do not
+reinstall or recreate.
+
+Steps:
+
+1. **Fetch the binary from the Release (trustless).** From the latest release, download the build
+   for this OS/arch (`clvsync-<os>-<arch>[.exe]`) **and** `SHA256SUMS`. **Verify the checksum**
+   (`Get-FileHash <file> -Algorithm SHA256` vs the matching `SHA256SUMS` line) and refuse to use a
+   binary that doesn't match. *(Release `minisign` signatures are a pending enhancement; verify them
+   too once published.)* If no prebuilt binary exists for this platform, fall back to
+   `go build ./cmd/clvsync` from a clone. Place the binary on `PATH`.
+   - ✅ Confirm `clvsync datadir` prints this machine's Clairvoyance data dir (call it `<DATA>`).
+2. **Place the Sync Operator template.** Copy `personas/Sync Operator.md` (from a clone or the raw
+   repo file at the release tag) into `<DATA>/neurons/personas/` so it becomes a selectable
+   **Knowledge Base**.
+3. **Create the Sync Operator persona (attended — get the user's OK first).** Add a Staff member
+   named **Sync Operator**, Knowledge Base **`Sync Operator`**, with **shell access** so it can run
+   `clvsync`. The `knowledgeTemplate: "Sync Operator"` marker is load-bearing — it arms the S15
+   self-sync guard.
+4. **Arm-check the guard.** Run `clvsync export --persona "Sync Operator" --out op.cvpkg`; it MUST
+   be **refused** (S15). If it succeeds, the template marker didn't take — fix the operator's
+   Knowledge Base before proceeding. Delete `op.cvpkg` if one was written.
+5. **Report done.** Tell the user they can now say "import the package on my Desktop" or "export my
+   `<persona>` to send to my other machine."
+
+**Install hard rules:**
+- **Trustless:** verify the binary's checksum before using it, and place only the repo's own template.
+- **Attended:** get the user's explicit approval before creating the Sync Operator Staff member and
+  granting it shell access.
+- **Idempotent:** detect an existing valid install and stop rather than clobber it.
+- **Do not modify this source repo** — no commits or pushes back to origin.
+- **Report every command and its result.**
 
 ## 2. Assisted import
 

@@ -6,10 +6,15 @@ All notable changes to `clvsync` are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Docs
-- **Assisted-path test runbook** (`docs/SYNC-OPERATOR-TEST.md`): install from GitHub → create the
-  Sync Operator Staff member → run an import driven by the operator, with acceptance checks for the
-  app-closed finisher handoff, the S15 guard, and non-CLI usability. Complements the CLI
-  `INTEGRATION-TEST.md`.
+- **Staff-directed install** (`AGENTS.md` §1 rewritten): a Staff agent installs Persona Sync from the
+  GitHub Release — fetch + checksum-verify the binary, place the Sync Operator template, create the
+  operator (attended), arm-check the S15 guard — as the authoritative procedure, with trustless /
+  attended / idempotent / don't-modify-source / report-every-command hard rules, mirroring the
+  backup-system "ask Clairvoyance to install it" convention.
+- **Assisted-path test runbook** (`docs/SYNC-OPERATOR-TEST.md`): a fresh machine where a Staff agent
+  installs from GitHub, then an import is driven by the operator — acceptance checks for the
+  Staff-driven install, the app-closed finisher handoff, the S15 guard, and non-CLI usability.
+  Complements the CLI `INTEGRATION-TEST.md`.
 - **Credential-hygiene guidance** for developers who push to GitHub with Staff: keep tokens in
   Settings → Credentials (never in chat), push via git's credential helper / `gh`, let CI use its
   own scoped token, and treat a blocked export as a **real leak** (rotate + re-store + scrub, not a
