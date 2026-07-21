@@ -5,6 +5,14 @@ All notable changes to `clvsync` are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+- **Data-dir resolution now honors `CLAIRVOYANCE_BASE_USER_DATA`.** When the user has
+  relocated their Clairvoyance store off the OS default (e.g. onto another drive), the app
+  reads from that path via `CLAIRVOYANCE_BASE_USER_DATA`; `clvsync` previously ignored it and
+  imported into the OS-default dir the app wasn't looking at (a persona would land on disk but
+  not appear in the app). Resolution precedence is now `CLV_DATA_DIR` → `CLAIRVOYANCE_BASE_USER_DATA`
+  → OS default. `--data-dir` still overrides everything.
+
 ### Added — Phase 6: round-trip create-or-merge sync
 - `import --mode sync|overwrite|skip` (default **`sync`**), replacing the old
   create-or-`--force` behavior. `--force` remains as a back-compat alias for `overwrite`.
