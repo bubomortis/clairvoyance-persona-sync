@@ -5,15 +5,23 @@ All notable changes to `clvsync` are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Docs
+- **Credential-hygiene guidance** for developers who push to GitHub with Staff: keep tokens in
+  Settings → Credentials (never in chat), push via git's credential helper / `gh`, let CI use its
+  own scoped token, and treat a blocked export as a **real leak** (rotate + re-store + scrub, not a
+  reflexive `--allow-secrets`). Added to the Operator Guide (new "Credential hygiene" section),
+  README security posture, the Sync Operator persona, and `AGENTS.md`.
+
+## [0.1.1] — 2026-07-21
+
 ### Added
-- **On-import auto-repoint of dead machine-local paths (toward v0.1.1).** When an imported
-  persona's `shell.cwd` points at a path that doesn't exist on this machine (e.g. the source
-  machine's data dir), it is repointed to the target data dir so the persona starts without a
-  manual `cwd` fix — the "cwd does not exist" case seen in the first cross-machine import.
-  Applies to created/overwritten personas and workspace roster members; a `cwd` that already
-  exists is left untouched; sync-merges are unaffected (they keep the destination's shell).
-  Replaces the previous cwd advisory. Pending validation in the next two-machine test before
-  the `v0.1.1` tag.
+- **On-import auto-repoint of dead machine-local paths.** When an imported persona's `shell.cwd`
+  points at a path that doesn't exist on this machine (e.g. the source machine's data dir), it is
+  repointed to the target data dir so the persona starts without a manual `cwd` fix — the
+  "cwd does not exist" case seen in the first cross-machine import. Applies to created/overwritten
+  personas and workspace roster members; a `cwd` that already exists is left untouched; sync-merges
+  are unaffected (they keep the destination's shell). Replaces the previous cwd advisory. Validated
+  by a second two-machine run.
 
 ## [0.1.0] — 2026-07-21
 

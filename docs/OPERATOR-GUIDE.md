@@ -78,11 +78,39 @@ Import order (all automatic): **verify signature → decrypt → safe-extract �
 3. **Review the imported persona** before trusting it (its persona/memory files become instructions the target's agents load).
 4. Tier 2: the thread should be resumable under the target's own model (Universal Resume, ≥ 0.77.0).
 
+## Credential hygiene (read this if you push to GitHub — or anywhere — with Staff)
+
+`clvsync` transports **conversation history**, which is a faithful record of what was said —
+including any secret that was ever pasted into a chat. If you develop with Staff and push to
+GitHub, treat credentials accordingly so they never enter a transcript in the first place:
+
+- **Store tokens in Settings → Credentials — never paste them into a conversation.** Clairvoyance
+  injects them as environment variables; the raw value stays in the credential store, out of the
+  transcript. Reference them by name (e.g. `GITHUB_TOKEN`), never by value.
+- **Push through git's credential helper or `gh`** — never build a `https://<token>@github.com/…`
+  URL in a command. That echoes the token into the command *and* into any error output, which then
+  lives in history.
+- **Let CI do releases.** GitHub Actions uses its own scoped token; your personal PAT never needs to
+  be handled by an agent at all.
+- **Prefer fine-grained PATs** with the minimum scopes and an expiration.
+
+If a secret does end up in a transcript, the secret-scan gate is your backstop — it **blocks the
+export by default**. When that happens, the right response is **not** to reflexively
+`--allow-secrets`; it's to treat it as a real leak:
+
+1. **Rotate** the exposed credential (regenerate it — the old value is compromised).
+2. **Re-store** the new value in Settings → Credentials.
+3. **Scrub** the secret from the transcript **with Clairvoyance closed** (so the app doesn't
+   re-flush it from memory), then re-export.
+
+`--allow-secrets` is only for a genuine false positive, or a value that is already dead
+(e.g. rotated) and you knowingly accept carrying the inert string.
+
 ## Troubleshooting
 
 | Symptom | Cause / fix |
 | ------- | ----------- |
-| `secret-scan blocked export` | A key/token is in the persona's data. Remove it, or `--allow-secrets` if it's a false positive. |
+| `secret-scan blocked export` | A key/token is in the persona's history/data — treat it as a **real leak**: rotate the credential, store it in Settings → Credentials, scrub the transcript (app closed), then re-export. Use `--allow-secrets` only for a true false positive or an already-rotated (dead) value. See **Credential hygiene** above. |
 | `collision: persona … already on target` | Same staff id exists. `--force` to overwrite (backs up first). |
 | `Tier 4 … requires workspace … to already exist` | Import the Tier-3 package first; the heavy add-on is paired. |
 | `Tier 4 SKIPPED (space-aware fail-down)` | Target lacks room; the workspace synced without regenerable content — recreate it from manifests, or free space and re-run. |
@@ -91,6 +119,9 @@ Import order (all automatic): **verify signature → decrypt → safe-extract �
 
 ## Security cheat-sheet
 
+- **Keep credentials in Settings → Credentials — never paste a token into a conversation.**
+- A **blocked export = a real secret in your history**: rotate it, re-store it, scrub the
+  transcript (app closed), re-export — don't just `--allow-secrets`.
 - **Never** send the passphrase with the package.
 - **Always** review the export's secret-scan output.
 - Prefer **signing** for anything shared beyond your own machines.

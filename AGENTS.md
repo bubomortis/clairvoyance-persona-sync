@@ -65,3 +65,11 @@ Staff steps:
 - **Never** send the passphrase together with the package.
 - **Always** dry-run and get confirmation before a real import.
 - Imported personas/memory are untrusted until reviewed — do not auto-activate them.
+- **A blocked export = a real secret in the history.** If the secret scan stops an export, don't
+  reflexively pass `--allow-secrets` — tell the user a credential leaked into the conversation and
+  have them **rotate** it, **store** it in Settings → Credentials (not chat), and **scrub** the
+  transcript (app closed) before re-exporting. `--allow-secrets` is only for a true false positive
+  or an already-rotated dead value.
+- **Keep credentials out of chat.** Store PATs/tokens in Settings → Credentials and push via git's
+  credential helper or `gh` — never paste a token or build a `https://<token>@github.com/…` URL.
+  Let CI releases use GitHub Actions' own token.

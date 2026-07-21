@@ -30,6 +30,12 @@ Because a package **leaves the machine**, the design treats it as sensitive in t
 
 A full pre-build security audit backs these controls.
 
+**Developing with Staff and pushing to GitHub?** `clvsync` transports conversation history, so a
+token pasted into a chat can travel with a persona. Keep credentials in **Settings → Credentials**
+(never in chat), push via git's credential helper or `gh` (never a tokenized URL), and let CI
+releases use Actions' own token. If a secret does leak into a transcript, the scan blocks the export
+— rotate it and re-store it rather than overriding. See [Credential hygiene](docs/OPERATOR-GUIDE.md#credential-hygiene-read-this-if-you-push-to-github--or-anywhere--with-staff).
+
 ## Build
 
 Requires Go ≥ 1.26.
