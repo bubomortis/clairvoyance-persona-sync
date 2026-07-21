@@ -33,8 +33,8 @@ Resume); network access to `github.com`; a shell the agent can run `clvsync` fro
 Steps:
 
 0. **Check for an existing install** with `clvsync status` (see the gate above) and branch accordingly.
-1. **Fetch the binary from the Release (trustless).** From the latest release, download the build
-   for this OS/arch (`clvsync-<os>-<arch>[.exe]`) **and** `SHA256SUMS`. **Verify the checksum**
+1. **Fetch the binary from the Release (verify its integrity).** From the latest release, download the
+   build for this OS/arch (`clvsync-<os>-<arch>[.exe]`) **and** `SHA256SUMS`. **Verify the checksum**
    (`Get-FileHash <file> -Algorithm SHA256` vs the matching `SHA256SUMS` line) and refuse to use a
    binary that doesn't match. *(Release `minisign` signatures are a pending enhancement; verify them
    too once published.)* If no prebuilt binary exists for this platform, fall back to
@@ -54,7 +54,9 @@ Steps:
    `<persona>` to send to my other machine."
 
 **Install hard rules:**
-- **Trustless:** verify the binary's checksum before using it, and place only the repo's own template.
+- **Integrity-checked:** verify the binary's checksum against `SHA256SUMS` before using it (this proves
+  integrity, not authorship — trust rests on GitHub + the publisher until release signatures land), and
+  place only the repo's own template.
 - **Attended:** get the user's explicit approval before creating the Sync Operator Staff member and
   granting it shell access.
 - **Idempotent:** detect an existing valid install and stop rather than clobber it.

@@ -51,7 +51,7 @@ _Nothing yet._
   closing the gap where `AGENTS.md` had the procedure but the README didn't tell users how to start it.
 - **Staff-directed install** (`AGENTS.md` §1 rewritten): a Staff agent installs Persona Sync from the
   GitHub Release — fetch + checksum-verify the binary, place the Sync Operator template, create the
-  operator (attended), arm-check the S15 guard — as the authoritative procedure, with trustless /
+  operator (attended), arm-check the S15 guard — as the authoritative procedure, with integrity-checked /
   attended / idempotent / don't-modify-source / report-every-command hard rules, mirroring the
   backup-system "ask Clairvoyance to install it" convention.
 - **Assisted-path test runbook** (`docs/SYNC-OPERATOR-TEST.md`): a fresh machine where a Staff agent

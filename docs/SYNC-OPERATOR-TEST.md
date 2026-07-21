@@ -35,7 +35,7 @@ procedure — and:
 6. **arm-check the guard** (`clvsync export --persona "Sync Operator"` must be refused, S15),
 7. report done.
 
-Watch that the agent behaves per the install hard rules — **trustless** (verifies the checksum
+Watch that the agent behaves per the install hard rules — **integrity-checked** (verifies the checksum
 before using the binary), **attended** (asks before creating the operator / granting shell access),
 **idempotent** (detects an existing install and stops), reports each command + result, and does
 **not** try to modify the source repo.
@@ -100,7 +100,7 @@ operator to export it.
 | Check | Result |
 | ----- | ------ |
 | Staff agent installed it from GitHub, following `AGENTS.md` | ☐ |
-| Binary checksum verified before use (trustless) | ☐ |
+| Binary checksum verified before use (integrity, not authorship) | ☐ |
 | Agent asked before creating the operator / granting shell access (attended) | ☐ |
 | `Sync Operator` selectable as a Knowledge Base | ☐ |
 | Operator has working shell access | ☐ |

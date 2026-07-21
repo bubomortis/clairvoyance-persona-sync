@@ -59,10 +59,12 @@ read section 1 in full and follow it exactly. Observe these rules:
    operator, stop and ask me to remove the extra.
 2. Confirm prerequisites: Clairvoyance 0.77.0 or later, network access to github.com,
    and a shell you can run clvsync from. Report any missing prerequisite and stop.
-3. TRUSTLESS BINARY. Download the release build for this OS/arch AND SHA256SUMS from
-   the latest GitHub release, verify the checksum, and refuse any binary that does
-   not match. If there is no prebuilt binary for this platform, build from source
-   with `go build ./cmd/clvsync`. Put clvsync on PATH; confirm `clvsync datadir` works.
+3. VERIFY THE BINARY'S INTEGRITY. Download the release build for this OS/arch AND
+   SHA256SUMS from the latest GitHub release, verify the checksum against SHA256SUMS,
+   and refuse any binary that does not match. (This proves integrity, not authorship:
+   the trust anchor is GitHub + the publisher's account, not a signature yet.) If
+   there is no prebuilt binary for this platform, build from source with
+   `go build ./cmd/clvsync`. Put clvsync on PATH; confirm `clvsync datadir` works.
 4. Place only this repo's own personas/"Sync Operator.md" template into the data dir.
 5. STOP AND GET MY EXPLICIT APPROVAL before creating the Sync Operator Staff member
    and granting it shell access -- a prompt is not consent.
