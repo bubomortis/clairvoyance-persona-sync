@@ -78,7 +78,8 @@ machine-local: `clvsync` refuses to sync it by default (guard **S15**).
 - [AGENTS.md](AGENTS.md) — have Clairvoyance Staff set up and run `clvsync` for you (no terminal)
 - [docs/OPERATOR-GUIDE.md](docs/OPERATOR-GUIDE.md) — export → transport → prep → import → verify, with troubleshooting
 - [docs/SYNC-OPERATOR.md](docs/SYNC-OPERATOR.md) — round-trip merge semantics, the Sync Operator persona, receipt/verify-import, the S15 guard
-- [docs/INTEGRATION-TEST.md](docs/INTEGRATION-TEST.md) — two-machine Tier-2 Universal Resume test (run before release)
+- [docs/INTEGRATION-TEST.md](docs/INTEGRATION-TEST.md) — two-machine Tier-2 Universal Resume test, CLI path (run before release)
+- [docs/SYNC-OPERATOR-TEST.md](docs/SYNC-OPERATOR-TEST.md) — assisted-path test: install from GitHub → create the Sync Operator → import driven by the operator
 - [docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md) — the findings re-verified against the built code
 
 ## License

@@ -6,6 +6,10 @@ All notable changes to `clvsync` are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Docs
+- **Assisted-path test runbook** (`docs/SYNC-OPERATOR-TEST.md`): install from GitHub → create the
+  Sync Operator Staff member → run an import driven by the operator, with acceptance checks for the
+  app-closed finisher handoff, the S15 guard, and non-CLI usability. Complements the CLI
+  `INTEGRATION-TEST.md`.
 - **Credential-hygiene guidance** for developers who push to GitHub with Staff: keep tokens in
   Settings → Credentials (never in chat), push via git's credential helper / `gh`, let CI use its
   own scoped token, and treat a blocked export as a **real leak** (rotate + re-store + scrub, not a
