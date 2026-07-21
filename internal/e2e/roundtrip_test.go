@@ -45,7 +45,8 @@ func buildSource(t *testing.T) (dataDir string, wantHome, wantWS, wantHist strin
 	write(t, filepath.Join(dataDir, "profiles", "prof1", "staff.json"), "["+entry+"]")
 
 	wantHist = `{"messages":[{"role":"user","content":"hi"}],"sessionId":"s1","staffId":"` + staffID + `"}`
-	write(t, filepath.Join(dataDir, "profiles", "prof1", "agent-history", "staff-"+staffID+".json"), wantHist)
+	// Real Clairvoyance names the transcript {id}.json (the id already carries the "staff-" prefix).
+	write(t, filepath.Join(dataDir, "profiles", "prof1", "agent-history", staffID+".json"), wantHist)
 
 	wantHome = "# Testy home memory\nremember the plan"
 	write(t, filepath.Join(dataDir, ".Clairvoyance", "staff", "testy", "index.md"), wantHome)
@@ -214,7 +215,7 @@ func TestRoundtrip_EncryptedSigned(t *testing.T) {
 	// assert workspace memory REMAPPED to the target workspace path
 	assertFile(t, filepath.Join(dstWS, ".Clairvoyance", "staff", "testy", "notes.md"), wantWS)
 	// assert history
-	assertFile(t, filepath.Join(dstDir, "profiles", "prof2", "agent-history", "staff-"+staffID+".json"), wantHist)
+	assertFile(t, filepath.Join(dstDir, "profiles", "prof2", "agent-history", staffID+".json"), wantHist)
 	// assert template
 	if _, err := os.Stat(filepath.Join(dstDir, "neurons", "personas", "Custom.md")); err != nil {
 		t.Fatalf("custom template not placed: %v", err)

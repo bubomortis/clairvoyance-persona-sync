@@ -118,7 +118,7 @@ func (in *Instance) FindPersona(nameOrID string) (*Persona, error) {
 }
 
 func (in *Instance) populate(p *Persona) {
-	if h := filepath.Join(in.DataDir, "profiles", p.Profile, "agent-history", "staff-"+p.ID+".json"); fileExists(h) {
+	if h := filepath.Join(in.DataDir, "profiles", p.Profile, "agent-history", p.ID+".json"); fileExists(h) {
 		p.History = h
 	}
 	if d := staffMemDir(in.DataDir, p.Lname); d != "" {

@@ -459,12 +459,12 @@ func mergeDir(srcDir, dstDir string, overwrite, dryRun bool, rep *Report) (added
 // take the incoming transcript only if it is newer (savedAt) or larger; back up any
 // replaced transcript and warn if the two have diverged.
 func mergeHistory(root, subdir, id, prof string, in *clv.Instance, rep *Report, opts Options) {
-	srcH := filepath.Join(root, subdir, "history", "staff-"+id+".json")
+	srcH := filepath.Join(root, subdir, "history", id+".json")
 	sb, err := os.ReadFile(srcH)
 	if err != nil {
 		return
 	}
-	dst := filepath.Join(in.DataDir, "profiles", prof, "agent-history", "staff-"+id+".json")
+	dst := filepath.Join(in.DataDir, "profiles", prof, "agent-history", id+".json")
 	db, _ := os.ReadFile(dst)
 	take, diverged := clv.HistoryDecision(db, sb)
 	if opts.mode() == clv.ModeOverwrite {

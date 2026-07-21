@@ -83,7 +83,7 @@ func stagePersona(in *clv.Instance, p *clv.Persona, stageRoot, subdir string, in
 		}
 	}
 	if p.History != "" {
-		if err := pkg.CopyFile(p.History, filepath.Join(base, "history", "staff-"+p.ID+".json")); err != nil {
+		if err := pkg.CopyFile(p.History, filepath.Join(base, "history", p.ID+".json")); err != nil {
 			return err
 		}
 	}
