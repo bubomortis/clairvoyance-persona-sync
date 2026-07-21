@@ -5,6 +5,14 @@ All notable changes to `clvsync` are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- **Export remembers its output location.** `export` now accepts `--out-dir <folder>` (auto-names
+  the package) in addition to `--out <full-path>`, and **remembers the folder** in a small
+  `clvsync-state.json` beside the data dir. With neither flag, the export defaults to that
+  last-used folder; the new `clvsync last-export-dir` command prints it. The Sync Operator uses this
+  to **ask where to save on the first export and offer the last location as the default thereafter**
+  (`AGENTS.md` §3). First export with no remembered location and no flag errors with guidance.
+
 ### Docs
 - **Staff-directed install** (`AGENTS.md` §1 rewritten): a Staff agent installs Persona Sync from the
   GitHub Release — fetch + checksum-verify the binary, place the Sync Operator template, create the

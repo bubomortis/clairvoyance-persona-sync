@@ -21,6 +21,7 @@ import (
 	"github.com/bubomortis/clairvoyance-persona-sync/internal/diskfree"
 	"github.com/bubomortis/clairvoyance-persona-sync/internal/export"
 	"github.com/bubomortis/clairvoyance-persona-sync/internal/importer"
+	"github.com/bubomortis/clairvoyance-persona-sync/internal/state"
 )
 
 const usage = `clvsync — Clairvoyance Persona & Workspace Sync
@@ -33,6 +34,7 @@ Commands:
   workspace-prep  Register + scaffold a workspace to receive an import (run app-closed)
   keygen          Generate a minisign signing keypair
   datadir         Print the resolved Clairvoyance data directory
+  last-export-dir Print the directory the last export was written to (blank if none yet)
 
 Run 'clvsync import' with no --in for a guided (interactive) import.
 
@@ -54,6 +56,11 @@ func main() {
 		var d string
 		if d, err = datadir.Resolve(); err == nil {
 			fmt.Println(d)
+		}
+	case "last-export-dir":
+		var d string
+		if d, err = datadir.Resolve(); err == nil {
+			fmt.Println(state.Load(d).LastExportDir)
 		}
 	case "keygen":
 		err = cmdKeygen(os.Args[2:])
@@ -125,7 +132,8 @@ func cmdExport(args []string) error {
 	fs := flag.NewFlagSet("export", flag.ExitOnError)
 	persona := fs.String("persona", "", "persona name or staff id (Tier 1/2)")
 	workspace := fs.String("workspace", "", "workspace name to export whole (Tier 3)")
-	out := fs.String("out", "", "output package path (required)")
+	out := fs.String("out", "", "output package path (full path). If omitted, uses --out-dir or the last export location")
+	outDir := fs.String("out-dir", "", "directory to write the package into (filename auto-generated); defaults to the last export location")
 	tier := fs.Int("tier", 1, "1 = portable persona; 2 = + Universal Resume (cross-model session resume)")
 	recipient := fs.String("recipient", "", "age X25519 recipient public key (encrypt to key)")
 	signKey := fs.String("sign-key", "", "minisign private key file to sign with")
@@ -134,8 +142,8 @@ func cmdExport(args []string) error {
 	includeHeavy := fs.Bool("include-heavy", false, "workspace: also emit the Tier 4 heavy add-on (space-gated)")
 	dataDir := fs.String("data-dir", "", "override Clairvoyance data dir")
 	fs.Parse(args)
-	if *out == "" || (*persona == "" && *workspace == "") {
-		return fmt.Errorf("--out and one of --persona or --workspace are required")
+	if *persona == "" && *workspace == "" {
+		return fmt.Errorf("one of --persona or --workspace is required")
 	}
 	in, err := resolveDataDir(*dataDir)
 	if err != nil {
@@ -149,15 +157,46 @@ func cmdExport(args []string) error {
 		}
 		opts.SignKey = &priv
 	}
+
+	// Resolve the output path: --out (full) > --out-dir/<name> > last export location/<name>.
+	// After the first export the directory is remembered so future exports default to it.
+	outPath := *out
+	if outPath == "" {
+		dir := *outDir
+		usedLast := false
+		if dir == "" {
+			dir = state.Load(in.DataDir).LastExportDir
+			usedLast = dir != ""
+		}
+		if dir == "" {
+			return fmt.Errorf("no output location — pass --out <file> or --out-dir <dir> (after your first export, clvsync remembers the directory and defaults to it)")
+		}
+		base := *persona
+		if *workspace != "" {
+			base = *workspace + "-workspace"
+		}
+		base = strings.ReplaceAll(strings.TrimSpace(base), " ", "-")
+		ext := ".cvpkg"
+		if opts.Passphrase != "" || opts.Recipient != "" {
+			ext += ".age"
+		}
+		outPath = filepath.Join(dir, base+ext)
+		if usedLast {
+			fmt.Printf("using last export location: %s\n", outPath)
+		} else {
+			fmt.Printf("output: %s\n", outPath)
+		}
+	}
+
 	var res *export.Result
 	if *workspace != "" {
-		res, err = export.Workspace(in, *workspace, *out, opts)
+		res, err = export.Workspace(in, *workspace, outPath, opts)
 	} else {
 		p, ferr := in.FindPersona(*persona)
 		if ferr != nil {
 			return ferr
 		}
-		res, err = export.Persona(in, p, *out, opts)
+		res, err = export.Persona(in, p, outPath, opts)
 	}
 	if err != nil {
 		if res != nil && len(res.SecretHits) > 0 {
@@ -168,6 +207,9 @@ func cmdExport(args []string) error {
 		}
 		return err
 	}
+	// Remember the directory so the next export can default to it.
+	_ = state.RememberExportDir(in.DataDir, filepath.Dir(res.PackagePath))
+
 	label := *persona
 	if *workspace != "" {
 		label = "workspace:" + *workspace
@@ -177,7 +219,7 @@ func cmdExport(args []string) error {
 		fmt.Printf("signature: %s\n", res.SigPath)
 	}
 	if *workspace != "" && *includeHeavy {
-		return exportHeavy(in, *workspace, *out, opts)
+		return exportHeavy(in, *workspace, outPath, opts)
 	}
 	return nil
 }

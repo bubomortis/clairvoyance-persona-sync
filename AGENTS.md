@@ -80,10 +80,16 @@ Staff steps (this is the Sync Operator's job if present):
 
 Staff steps:
 
-1. `clvsync export --persona "<name>" --tier 2 --out <name>.cvpkg.age`
-   (set `CLVSYNC_PASSPHRASE` first to encrypt; Tier 2 includes the resumable session).
-2. Hand the user the `.cvpkg.age` file and remind them to send the **passphrase out of band**
-   (not with the file).
+1. **Ask where to save it.** On the **first** export, ask the user which folder to write the package
+   to. On **later** exports, offer the last-used folder as the default — check it with
+   `clvsync last-export-dir` and say e.g. *"I'll save it to `<that folder>` again — okay, or
+   somewhere else?"* Never silently pick a location.
+2. Set `CLVSYNC_PASSPHRASE` (Tier 2 includes the resumable session), then run:
+   `clvsync export --persona "<name>" --tier 2 --out-dir "<folder>"`
+   — `clvsync` auto-names the file and **remembers the folder** for next time. (Omit `--out-dir` to
+   reuse the remembered folder; use `--out <full-path>` for a one-off exact filename.)
+3. Hand the user the resulting `.cvpkg.age` file and remind them to send the **passphrase out of
+   band** (not with the file).
 
 ## Guard rails the agent must respect
 
