@@ -7,7 +7,7 @@ The pre-build spec enumerated 14 findings (S1–S14). This re-verifies each agai
 | **S1** | Secret leakage (history/memory/resume are a secret goldmine) | **built** | `internal/scan` + `export.finalize` scans the whole staging tree and **blocks** unless `AllowSecrets`; credential stores never gathered (`clv` only reads staff/memory/history) | `scan_test.go`, e2e `TestExport_BlocksPlantedSecret` |
 | **S2** | Transport interception | **built** | `internal/cryptobox` age (ChaCha20-Poly1305), passphrase + X25519 recipient | `cryptobox_test.go` |
 | **S3** | Zip-slip / path traversal on import | **built** | `internal/safepath.SafeJoin`, enforced in `pkg.ExtractTar` | `safepath_test.go`, `pkg_test.go TestExtractTar_RejectsTraversal` |
-| **S4** | Malicious definition (hostile runtime/shell) | **partial** | definition is spliced verbatim; **not executed** by clvsync. Field-whitelist warning is a follow-up (Phase 5+). | — |
+| **S4** | Malicious definition (hostile runtime/shell) | **built (advisory)** | definition is spliced verbatim and **not executed** by clvsync; `clv.UnknownDefinitionFields` now flags any key outside the documented portable/machine-local set and `applyPersona` warns for review (imports remain quarantined per S5) | `clv_test.go TestUnknownDefinitionFields` |
 | **S5** | Prompt injection via imported persona/memory | **built (procedural)** | import never auto-activates; every report carries a `ReviewNote`; Operator Guide §6 mandates review | — (procedural) |
 | **S6** | Identity collision / spoofing | **built** | `applyPersona`/`applyWorkspace` check `FindPersona(id)` and refuse without `Force` | e2e (collision path via Force) |
 | **S7** | Destructive merge | **built** | `SpliceStaffEntry`, `MergeSessions`, `MergeResumeEntries`, `EnsureWorkspace` all write `*.clvsync-bak` and splice, not replace | e2e round-trips |
@@ -24,7 +24,7 @@ S1 (secret scrub), S3 (zip-slip), S5 (untrusted import), S7 (non-destructive), S
 
 ## Accepted / documented trade-offs
 - **Unencrypted-by-default output when no passphrase/recipient is given** — the CLI defaults to prompting; an operator can still write a plaintext package deliberately. Documented.
-- **S4 field-whitelist** for imported definitions is a follow-up; today the definition is inert data (never executed) and imports are reviewed (S5).
+- **S4 field-whitelist** is now a review **advisory** (warn-only): an imported definition carrying keys outside the documented set is surfaced on import. It is not a hard block because the definition is inert data clvsync never executes and imports are already quarantined for review (S5).
 - **age is not AES** (ChaCha20-Poly1305) — accepted per D2; not a compliance environment.
 
 ## Verdict

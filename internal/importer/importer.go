@@ -234,6 +234,11 @@ func applyPersona(stage string, meta pkg.Meta, in *clv.Instance, opts Options) (
 	if err != nil {
 		return nil, err
 	}
+	// S4: surface unrecognized definition fields for review. The definition is inert
+	// data clvsync never executes, but it becomes agent-loaded config on the target.
+	if unknown := clv.UnknownDefinitionFields(entry); len(unknown) > 0 {
+		rep.warn("imported definition carries unrecognized field(s) %v — review before relying on this Staff member (they are inert to clvsync but loaded by Clairvoyance)", unknown)
+	}
 	prof, err := in.DefaultProfile()
 	if err != nil {
 		return nil, err

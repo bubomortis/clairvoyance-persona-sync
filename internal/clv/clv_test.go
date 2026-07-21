@@ -21,6 +21,23 @@ func TestSlug_NeutralizesPathChars(t *testing.T) {
 	}
 }
 
+// S4: an imported definition carrying keys clvsync doesn't recognize must be
+// surfaced for review; a definition of only known fields must not warn.
+func TestUnknownDefinitionFields(t *testing.T) {
+	known := `{"id":"staff-1","name":"Reegor","jobDescription":"eng","model":"claude","runtime":"x","createdAt":"t"}`
+	if got := UnknownDefinitionFields([]byte(known)); len(got) != 0 {
+		t.Errorf("known-only definition flagged: %v", got)
+	}
+	hostile := `{"id":"staff-1","name":"Reegor","onLoad":"rm -rf","evilHook":true}`
+	got := UnknownDefinitionFields([]byte(hostile))
+	if len(got) != 2 || got[0] != "evilHook" || got[1] != "onLoad" {
+		t.Errorf("expected sorted [evilHook onLoad], got %v", got)
+	}
+	if UnknownDefinitionFields([]byte("not json")) != nil {
+		t.Error("unparseable entry should return nil")
+	}
+}
+
 func TestValidMemKey(t *testing.T) {
 	good := []string{"reegor", "my-agent", "a-b-c"}
 	for _, g := range good {

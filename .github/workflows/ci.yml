@@ -27,16 +27,20 @@ jobs:
     needs: test
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need tags so the version stamp can use git describe
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26'
       - name: Build all targets
         run: |
           mkdir -p dist
+          VER=$(git describe --tags --always)
+          LDFLAGS="-X github.com/bubomortis/clairvoyance-persona-sync/internal/version.Version=$VER"
           for t in windows/amd64 linux/amd64 darwin/amd64 darwin/arm64; do
             os=${t%/*}; arch=${t#*/}
             ext=""; [ "$os" = "windows" ] && ext=".exe"
-            GOOS=$os GOARCH=$arch go build -trimpath -o "dist/clvsync-$os-$arch$ext" ./cmd/clvsync
+            GOOS=$os GOARCH=$arch go build -trimpath -ldflags "$LDFLAGS" -o "dist/clvsync-$os-$arch$ext" ./cmd/clvsync
           done
           ls -la dist
       - name: Checksums
@@ -55,16 +59,20 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # tags for the version stamp
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26'
       - name: Build all targets
         run: |
           mkdir -p dist
+          VER=${GITHUB_REF_NAME}   # the tag, e.g. v0.2.0
+          LDFLAGS="-X github.com/bubomortis/clairvoyance-persona-sync/internal/version.Version=$VER"
           for t in windows/amd64 linux/amd64 darwin/amd64 darwin/arm64; do
             os=${t%/*}; arch=${t#*/}
             ext=""; [ "$os" = "windows" ] && ext=".exe"
-            GOOS=$os GOARCH=$arch go build -trimpath -o "dist/clvsync-$os-$arch$ext" ./cmd/clvsync
+            GOOS=$os GOARCH=$arch go build -trimpath -ldflags "$LDFLAGS" -o "dist/clvsync-$os-$arch$ext" ./cmd/clvsync
           done
           cd dist && sha256sum * > SHA256SUMS
       - name: Publish release assets

@@ -4,7 +4,7 @@ Transport a Clairvoyance **Staff member** — or a whole **workspace** — from 
 
 A Staff member isn't one file — it's a definition (`profiles/{id}/staff.json` entry), a custom persona template, per-workspace memory (`.Clairvoyance/staff/{name}/`), and history (`agent-history/staff-{id}.json`). `clvsync` gathers those, scrubs anything that shouldn't leave the machine, and re-homes them on the target.
 
-> **Status: `v0.1.0` — validated on hardware.** All four tiers, round-trip create-or-merge sync, the Sync Operator assisted-import flow, and the self-sync guard are implemented and tested. The two-machine Universal Resume integration test ([docs/INTEGRATION-TEST.md](docs/INTEGRATION-TEST.md)) passed end to end: a persona exported from machine A imported to machine B on a different drive layout and resumed with full context and live continuation.
+> **Status: validated on hardware.** All four tiers, round-trip create-or-merge sync, the Sync Operator assisted-import flow, the self-sync guard, and in-place self-update are implemented and tested. The two-machine Universal Resume integration test ([docs/INTEGRATION-TEST.md](docs/INTEGRATION-TEST.md)) passed end to end: a persona exported from machine A imported to machine B on a different drive layout and resumed with full context and live continuation. `clvsync status` reports the install and whether an update is available; `clvsync update` upgrades in place.
 
 ## Layered tiers
 
@@ -36,7 +36,59 @@ token pasted into a chat can travel with a persona. Keep credentials in **Settin
 releases use Actions' own token. If a secret does leak into a transcript, the scan blocks the export
 — rotate it and re-store it rather than overriding. See [Credential hygiene](docs/OPERATOR-GUIDE.md#credential-hygiene-read-this-if-you-push-to-github--or-anywhere--with-staff).
 
-## Build
+## Installation
+
+`clvsync` is a single self-contained binary. Choose **one** method.
+
+### Option A: Ask Clairvoyance to install it
+
+Use this if you have a trusted Clairvoyance Staff agent that can run commands on your machine. It installs the binary **and** sets up a **Sync Operator** Staff member that drives your imports and exports in plain language (no terminal). Paste this prompt to that agent verbatim:
+
+```text
+Install Clairvoyance Persona Sync (clvsync) on this machine from
+https://github.com/bubomortis/clairvoyance-persona-sync
+
+Treat AGENTS.md in that repository as the AUTHORITATIVE, step-by-step procedure:
+read section 1 in full and follow it exactly. Observe these rules:
+
+1. IDEMPOTENCY FIRST. If clvsync is already on PATH, run `clvsync status` before
+   changing anything. If it reports a working install with a Sync Operator present,
+   do NOT reinstall -- report the existing install and stop. If it reports "UPDATE
+   AVAILABLE", offer to run `clvsync update` and nothing else. If the Sync Operator
+   is missing, only create it (skip the binary install). If it reports a DUPLICATE
+   operator, stop and ask me to remove the extra.
+2. Confirm prerequisites: Clairvoyance 0.77.0 or later, network access to github.com,
+   and a shell you can run clvsync from. Report any missing prerequisite and stop.
+3. TRUSTLESS BINARY. Download the release build for this OS/arch AND SHA256SUMS from
+   the latest GitHub release, verify the checksum, and refuse any binary that does
+   not match. If there is no prebuilt binary for this platform, build from source
+   with `go build ./cmd/clvsync`. Put clvsync on PATH; confirm `clvsync datadir` works.
+4. Place only this repo's own personas/"Sync Operator.md" template into the data dir.
+5. STOP AND GET MY EXPLICIT APPROVAL before creating the Sync Operator Staff member
+   and granting it shell access -- a prompt is not consent.
+6. Arm-check the guard: `clvsync export --persona "Sync Operator" --out op.cvpkg`
+   MUST be refused (S15). If it succeeds, fix the operator's Knowledge Base marker.
+7. Do NOT modify, commit to, or push to the source repository. Report every command
+   and its result.
+```
+
+The agent must still stop and ask for your approval before creating Staff or granting shell access. A copy-paste prompt is a convenience, **not consent**.
+
+### Option B: Install it yourself
+
+1. Download the build for your OS/arch (`clvsync-<os>-<arch>[.exe]`) and `SHA256SUMS` from the [latest release](https://github.com/bubomortis/clairvoyance-persona-sync/releases/latest).
+2. **Verify the checksum** and refuse a mismatch:
+   - Windows (PowerShell): `Get-FileHash clvsync-windows-amd64.exe -Algorithm SHA256`
+   - macOS / Linux: `shasum -a 256 clvsync-<os>-<arch>`
+
+   Compare the digest to the matching line in `SHA256SUMS`.
+3. Put the binary on your `PATH`, then confirm: `clvsync status`.
+
+No prebuilt binary for your platform? Build from source (Go ≥ 1.26): `go build -o clvsync ./cmd/clvsync`.
+
+Once installed, **`clvsync status`** shows the version, data dir, Sync Operator state, and whether an update is available; **`clvsync update`** upgrades the binary in place (downloads the latest release, checksum-verifies it, and swaps it in — Windows-safe).
+
+## Build (from source)
 
 Requires Go ≥ 1.26.
 
@@ -59,7 +111,8 @@ Cross-platform: resolves the Clairvoyance data directory per OS (Windows `%APPDA
 - [x] **Phase 6** — round-trip **create-or-merge sync**: `--mode sync|overwrite|skip`, portable-vs-machine-local definition split (machine-local runtime preserved on a round-trip), memory union, history newest-wins, `--dry-run` preview *(done; unit-tested + live CLI-validated)*
 - [x] **Phase 7** — **Sync Operator** assisted-import persona + `AGENTS.md` runbook, `import-receipt.json` + `verify-import` restart reconciliation, guided interactive `import`, and the **S15 self-sync guard** *(done; unit-tested + live CLI-validated)*
 - [x] **`v0.1.0`** — signed release (binaries + `SHA256SUMS` on GitHub Releases), validated by the two-machine Universal Resume integration test ([docs/INTEGRATION-TEST.md](docs/INTEGRATION-TEST.md))
-- [ ] **`v0.1.1`** — on-import auto-repoint of machine-local paths (`shell.cwd`/runtime) that don't exist on the target
+- [x] **`v0.1.1`** — on-import auto-repoint of machine-local paths (`shell.cwd`/runtime) that don't exist on the target
+- [x] **`v0.2.0`** — in-place self-update (`status` / `update` / `version`, checksum-verified, Windows-safe binary swap), S4 unrecognized-definition-field review advisory, and the Staff-driven "install from GitHub" quick-start
 
 ## Round-trip sync & the Sync Operator
 

@@ -6,12 +6,15 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"crypto/rand"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"time"
 
 	"aead.dev/minisign"
 
@@ -21,7 +24,10 @@ import (
 	"github.com/bubomortis/clairvoyance-persona-sync/internal/diskfree"
 	"github.com/bubomortis/clairvoyance-persona-sync/internal/export"
 	"github.com/bubomortis/clairvoyance-persona-sync/internal/importer"
+	"github.com/bubomortis/clairvoyance-persona-sync/internal/release"
+	"github.com/bubomortis/clairvoyance-persona-sync/internal/selfupdate"
 	"github.com/bubomortis/clairvoyance-persona-sync/internal/state"
+	"github.com/bubomortis/clairvoyance-persona-sync/internal/version"
 )
 
 const usage = `clvsync — Clairvoyance Persona & Workspace Sync
@@ -33,6 +39,9 @@ Commands:
   verify-import   Reconcile a post-import receipt against live state (§19.2)
   workspace-prep  Register + scaffold a workspace to receive an import (run app-closed)
   keygen          Generate a minisign signing keypair
+  status          Show version, data dir, Sync Operator, and whether an update is available
+  update          Download + checksum-verify the latest release and replace this binary
+  version         Print the clvsync build version
   datadir         Print the resolved Clairvoyance data directory
   last-export-dir Print the directory the last export was written to (blank if none yet)
 
@@ -74,6 +83,12 @@ func main() {
 		err = cmdVerify(os.Args[2:])
 	case "verify-import":
 		err = cmdVerifyImport(os.Args[2:])
+	case "status":
+		err = cmdStatus(os.Args[2:])
+	case "update":
+		err = cmdUpdate(os.Args[2:])
+	case "version", "--version":
+		fmt.Printf("clvsync %s (%s/%s)\n", version.Version, runtime.GOOS, runtime.GOARCH)
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 	default:
@@ -125,6 +140,103 @@ func cmdKeygen(args []string) error {
 		return err
 	}
 	fmt.Printf("wrote %s.pub and %s.key\n", *out, *out)
+	return nil
+}
+
+// cmdStatus reports the install: version, data dir, Sync Operator presence, and
+// (unless --offline) whether a newer release is available. It is the deterministic
+// idempotency gate for the Staff install runbook (AGENTS.md §1). Network/registry
+// problems are reported but never make the command fail.
+func cmdStatus(args []string) error {
+	fs := flag.NewFlagSet("status", flag.ExitOnError)
+	dataDirFlag := fs.String("data-dir", "", "override Clairvoyance data dir")
+	offline := fs.Bool("offline", false, "skip the GitHub update check")
+	fs.Parse(args)
+
+	fmt.Printf("clvsync %s (%s/%s)\n", version.Version, runtime.GOOS, runtime.GOARCH)
+
+	dir := *dataDirFlag
+	if dir == "" {
+		if d, err := datadir.Resolve(); err == nil {
+			dir = d
+		} else {
+			fmt.Printf("  data dir: (unresolved: %v)\n", err)
+		}
+	}
+	if dir != "" {
+		fmt.Printf("  data dir: %s\n", dir)
+		if inst, err := clv.Open(dir); err == nil {
+			switch n := len(inst.OperatorIDs()); {
+			case n == 0:
+				fmt.Println("  Sync Operator: NOT present — run the install to create one")
+			case n == 1:
+				fmt.Println("  Sync Operator: present")
+			default:
+				fmt.Printf("  Sync Operator: DUPLICATE — %d present (should be exactly 1; remove extras)\n", n)
+			}
+		}
+	}
+
+	if *offline {
+		fmt.Println("  update check: skipped (--offline)")
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	rel, err := release.Latest(ctx)
+	if err != nil {
+		fmt.Printf("  latest release: (check failed: %v)\n", err)
+		return nil
+	}
+	switch cmp, ok := release.Compare(version.Version, rel.Tag); {
+	case !ok:
+		fmt.Printf("  latest release: %s — current build %q is not a released version\n", rel.Tag, version.Version)
+	case cmp < 0:
+		fmt.Printf("  latest release: %s — UPDATE AVAILABLE (run 'clvsync update')\n", rel.Tag)
+	default:
+		fmt.Printf("  latest release: %s — up to date\n", rel.Tag)
+	}
+	return nil
+}
+
+// cmdUpdate downloads the latest release binary for this platform, checksum-verifies
+// it, and replaces this executable in place. It prompts for confirmation unless --yes.
+func cmdUpdate(args []string) error {
+	fs := flag.NewFlagSet("update", flag.ExitOnError)
+	yes := fs.Bool("yes", false, "install without the confirmation prompt")
+	fs.Parse(args)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
+	defer cancel()
+	rel, err := release.Latest(ctx)
+	if err != nil {
+		return err
+	}
+	cmp, ok := release.Compare(version.Version, rel.Tag)
+	if ok && cmp >= 0 {
+		fmt.Printf("already up to date (clvsync %s, latest %s)\n", version.Version, rel.Tag)
+		return nil
+	}
+	if ok {
+		fmt.Printf("update available: %s -> %s\n", version.Version, rel.Tag)
+	} else {
+		fmt.Printf("current build %q is not a released version; latest is %s\n", version.Version, rel.Tag)
+	}
+
+	if !*yes {
+		self, _ := os.Executable()
+		fmt.Printf("download %s and replace %s? [y/N] ", selfupdate.AssetName(), self)
+		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+		if a := strings.ToLower(strings.TrimSpace(line)); a != "y" && a != "yes" {
+			fmt.Println("aborted.")
+			return nil
+		}
+	}
+	path, err := selfupdate.Apply(ctx, rel)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("updated %s to %s\n", path, rel.Tag)
 	return nil
 }
 

@@ -18,12 +18,21 @@ This section is the **authoritative install procedure** — read it fully and fo
 **Prerequisites to confirm (report and stop if any is missing):** Clairvoyance ≥ 0.77.0 (Universal
 Resume); network access to `github.com`; a shell the agent can run `clvsync` from.
 
-**Idempotency first:** before changing anything, detect an existing install — if `clvsync datadir`
-already works *and* a **Sync Operator** Staff member exists, report that and **stop**. Do not
-reinstall or recreate.
+**Idempotency first (deterministic gate):** before changing anything, run **`clvsync status`** if a
+`clvsync` is already on `PATH`. It reports the version, data dir, whether a **Sync Operator** exists
+(and flags DUPLICATES), and whether a newer release is available. Decide from its output:
+- `clvsync` runs **and** "Sync Operator: present" → the install is complete. If it also says
+  "UPDATE AVAILABLE", offer to run **`clvsync update`** (downloads + checksum-verifies the latest
+  release and replaces the binary; nothing else changes). Otherwise report the existing install and
+  **stop** — do not recreate anything.
+- `clvsync` runs but "Sync Operator: NOT present" → skip step 1 (binary is installed); go to step 2
+  to place the template and create the operator.
+- "Sync Operator: DUPLICATE" → stop and tell the user to remove the extra operator(s) first.
+- `clvsync` is not found → do the full install below.
 
 Steps:
 
+0. **Check for an existing install** with `clvsync status` (see the gate above) and branch accordingly.
 1. **Fetch the binary from the Release (trustless).** From the latest release, download the build
    for this OS/arch (`clvsync-<os>-<arch>[.exe]`) **and** `SHA256SUMS`. **Verify the checksum**
    (`Get-FileHash <file> -Algorithm SHA256` vs the matching `SHA256SUMS` line) and refuse to use a

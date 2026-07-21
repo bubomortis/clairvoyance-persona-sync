@@ -5,7 +5,23 @@ All notable changes to `clvsync` are documented here. Format loosely follows
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.2.0] - 2026-07-21
+
+### Added
+- **In-place self-update.** New commands: `clvsync status` (version, data dir, Sync Operator
+  present/absent/duplicate, and whether a newer GitHub release exists), `clvsync update` (downloads
+  this platform's release asset, **checksum-verifies it against `SHA256SUMS`**, and swaps the running
+  binary — Windows-safe: the current exe is renamed to `.old` rather than overwritten; `--yes` to
+  skip the prompt), and `clvsync version`. Builds are version-stamped via ldflags in CI. `status` is
+  the deterministic idempotency gate for the Staff install runbook (`AGENTS.md` §1 step 0).
+
 ### Security
+- **S4 — unrecognized-definition-field review advisory.** On import, a staff definition carrying
+  top-level keys outside the documented portable/machine-local set is now surfaced as a warning for
+  review (`clv.UnknownDefinitionFields`). The definition is inert data clvsync never executes, so this
+  warns rather than blocks; imports remain quarantined for review (S5).
 - **`verify` no longer claims a signature it never checked (P2).** Running `verify` without
   `--verify-key`/`--sig` now prints `UNVERIFIED` (integrity-only) and exits non-zero, instead of
   reporting "signature verified" and exit 0. Because the manifest travels inside the package,
@@ -28,6 +44,11 @@ All notable changes to `clvsync` are documented here. Format loosely follows
   (`AGENTS.md` §3). First export with no remembered location and no flag errors with guidance.
 
 ### Docs
+- **README "Installation" quick-start** — a user-facing **Option A: Ask Clairvoyance to install it**
+  (verbatim, idempotency-first copy-paste prompt that points Staff at `AGENTS.md` §1 and gates on
+  `clvsync status`) and **Option B: install it yourself** (download + checksum-verify + PATH), plus a
+  self-update note. Mirrors the backup-system / AGY-Shim "ask Clairvoyance to install it" convention,
+  closing the gap where `AGENTS.md` had the procedure but the README didn't tell users how to start it.
 - **Staff-directed install** (`AGENTS.md` §1 rewritten): a Staff agent installs Persona Sync from the
   GitHub Release — fetch + checksum-verify the binary, place the Sync Operator template, create the
   operator (attended), arm-check the S15 guard — as the authoritative procedure, with trustless /
