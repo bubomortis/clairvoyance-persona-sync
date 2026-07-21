@@ -5,7 +5,9 @@
 package scan
 
 import (
+	"bufio"
 	"bytes"
+	"io"
 	"os"
 	"regexp"
 )
@@ -15,6 +17,13 @@ type Match struct {
 	Path    string `json:"path"`
 	Pattern string `json:"pattern"`
 	Line    int    `json:"line"`
+}
+
+// Skip records a file the scanner could not fully inspect, so a skip is never
+// silently mistaken for "clean" (audit P4).
+type Skip struct {
+	Path   string `json:"path"`
+	Reason string `json:"reason"`
 }
 
 // DefaultPatterns mirror the backup engine's secretScanPatterns.
@@ -66,18 +75,46 @@ func (s *Scanner) Bytes(path string, data []byte) []Match {
 	return out
 }
 
-// File scans a file on disk, respecting MaxBytes.
-func (s *Scanner) File(path string) ([]Match, error) {
-	fi, err := os.Stat(path)
+// File scans a file on disk line-by-line so files of any size are inspected with
+// bounded memory (P4: MaxBytes no longer causes a silent skip). Binary files
+// (a NUL byte in the first 8 KiB) are reported as a Skip rather than passed as
+// clean. A non-nil *Skip means the file was not fully text-scanned.
+func (s *Scanner) File(path string) ([]Match, *Skip, error) {
+	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	if fi.Size() > s.MaxBytes {
-		return nil, nil
+	defer f.Close()
+
+	// Sniff for binary content up front (mirrors git's 8 KiB heuristic).
+	head := make([]byte, 8192)
+	n, rerr := io.ReadFull(f, head)
+	if rerr != nil && rerr != io.EOF && rerr != io.ErrUnexpectedEOF {
+		return nil, nil, rerr
 	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
+	if bytes.IndexByte(head[:n], 0) >= 0 {
+		return nil, &Skip{Path: path, Reason: "binary (NUL byte) — not text-scanned"}, nil
 	}
-	return s.Bytes(path, data), nil
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return nil, nil, err
+	}
+
+	var out []Match
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 8<<20) // tolerate long lines up to 8 MiB
+	line := 0
+	for sc.Scan() {
+		line++
+		ln := sc.Bytes()
+		for _, re := range s.res {
+			if re.Match(ln) {
+				out = append(out, Match{Path: path, Pattern: re.String(), Line: line})
+			}
+		}
+	}
+	if err := sc.Err(); err != nil {
+		// e.g. a single line longer than the buffer: surface it instead of hiding it.
+		return out, &Skip{Path: path, Reason: "partial scan: " + err.Error()}, nil
+	}
+	return out, nil, nil
 }

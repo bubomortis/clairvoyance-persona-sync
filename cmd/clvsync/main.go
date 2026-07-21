@@ -218,6 +218,13 @@ func cmdExport(args []string) error {
 	if res.SigPath != "" {
 		fmt.Printf("signature: %s\n", res.SigPath)
 	}
+	// P4: a file the scanner couldn't fully read is not the same as a clean file.
+	if len(res.SecretSkips) > 0 {
+		fmt.Fprintf(os.Stderr, "⚠ secret scan skipped %d file(s) (not text-scanned for secrets):\n", len(res.SecretSkips))
+		for _, sk := range res.SecretSkips {
+			fmt.Fprintf(os.Stderr, "    %s — %s\n", sk.Path, sk.Reason)
+		}
+	}
 	if *workspace != "" && *includeHeavy {
 		return exportHeavy(in, *workspace, outPath, opts)
 	}
@@ -302,8 +309,16 @@ func cmdVerify(args []string) error {
 	if meta.Tier >= 3 {
 		who = "workspace:" + meta.WorkspaceName
 	}
+	// P2: never report a signature as verified when none was checked. The
+	// manifest ships inside the package, so integrity alone is not authenticity.
+	if opts.VerifyKey == nil {
+		fmt.Printf("UNVERIFIED  tier=%d  %s  (created %s on %s)\n", meta.Tier, who, meta.CreatedAt, meta.SourceOS)
+		fmt.Println("  manifest integrity OK, but AUTHENTICITY was NOT verified: no --verify-key/--sig supplied.")
+		fmt.Println("  re-run with --verify-key <pub> --sig <file.minisig> to verify the publisher's signature.")
+		return fmt.Errorf("unverified: package signature was not checked (no --verify-key)")
+	}
 	fmt.Printf("OK  tier=%d  %s  (created %s on %s)\n", meta.Tier, who, meta.CreatedAt, meta.SourceOS)
-	fmt.Println("  signature verified (if a key was provided) + manifest integrity OK")
+	fmt.Println("  signature verified + manifest integrity OK")
 	return nil
 }
 

@@ -5,6 +5,20 @@ All notable changes to `clvsync` are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Security
+- **`verify` no longer claims a signature it never checked (P2).** Running `verify` without
+  `--verify-key`/`--sig` now prints `UNVERIFIED` (integrity-only) and exits non-zero, instead of
+  reporting "signature verified" and exit 0. Because the manifest travels inside the package,
+  integrity alone is not authenticity — the command now says so and fails closed.
+- **Crafted/empty persona names can no longer wipe all Staff memory (P3).** `Slug` neutralizes path
+  separators and leading/trailing dots, and the memory merge refuses an empty or path-bearing key
+  (with a defense-in-depth guard before any `RemoveAll`), so an `--mode overwrite` import can never
+  collapse to the staff-memory root and delete every persona's memory.
+- **The secret scanner no longer silently skips files (P4).** Files larger than 5 MiB are now
+  streamed and scanned instead of skipped, and binary (NUL-containing) files are reported as an
+  explicit skip rather than passing as "clean" — a skipped file is surfaced on export, not mistaken
+  for a scanned-clean one.
+
 ### Added
 - **Export remembers its output location.** `export` now accepts `--out-dir <folder>` (auto-names
   the package) in addition to `--out <full-path>`, and **remembers the folder** in a small

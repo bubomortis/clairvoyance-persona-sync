@@ -63,9 +63,22 @@ type Persona struct {
 	History  string
 }
 
-// Slug converts a display name to its memory-folder key.
+// Slug converts a display name to its memory-folder key. Path separators are
+// neutralized so a crafted persona name can never escape a single folder segment.
 func Slug(name string) string {
-	return strings.ReplaceAll(strings.ToLower(strings.TrimSpace(name)), " ", "-")
+	s := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(name)), " ", "-")
+	s = strings.NewReplacer("/", "-", "\\", "-").Replace(s)
+	return strings.Trim(s, ".") // never leave a leading/trailing dot ("." / "..")
+}
+
+// ValidMemKey reports whether lname is a safe single-segment memory-folder key.
+// Empty or path-bearing keys are rejected because they would let a merge target
+// the staff-memory ROOT (wiping every persona's memory) instead of one persona.
+func ValidMemKey(lname string) bool {
+	if lname == "" || lname == "." || lname == ".." {
+		return false
+	}
+	return !strings.ContainsAny(lname, `/\`)
 }
 
 func parseStaffArray(b []byte) ([]json.RawMessage, error) {

@@ -38,6 +38,7 @@ type Result struct {
 	PackagePath string
 	SigPath     string
 	SecretHits  []scan.Match
+	SecretSkips []scan.Skip
 	Encrypted   bool
 }
 
@@ -155,19 +156,23 @@ func finalize(stage, outPath string, meta pkg.Meta, opts Options) (*Result, erro
 	// secret scan gate (S1)
 	sc, _ := scan.New(nil)
 	var hits []scan.Match
+	var skips []scan.Skip
 	err := filepath.WalkDir(stage, func(pth string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
-		m, e := sc.File(pth)
+		m, sk, e := sc.File(pth)
 		hits = append(hits, m...)
+		if sk != nil {
+			skips = append(skips, *sk)
+		}
 		return e
 	})
 	if err != nil {
 		return nil, err
 	}
 	if len(hits) > 0 && !opts.AllowSecrets {
-		return &Result{SecretHits: hits}, fmt.Errorf("secret-scan blocked export: %d match(es); use AllowSecrets to override", len(hits))
+		return &Result{SecretHits: hits, SecretSkips: skips}, fmt.Errorf("secret-scan blocked export: %d match(es); use AllowSecrets to override", len(hits))
 	}
 
 	// manifest (S8) — after Build so it is not self-referential
@@ -189,7 +194,7 @@ func finalize(stage, outPath string, meta pkg.Meta, opts Options) (*Result, erro
 	if err != nil {
 		return nil, err
 	}
-	res := &Result{PackagePath: outPath, SecretHits: hits}
+	res := &Result{PackagePath: outPath, SecretHits: hits, SecretSkips: skips}
 	switch {
 	case opts.Passphrase != "":
 		err = cryptobox.EncryptPassphrase(out, bytes.NewReader(tarbuf.Bytes()), opts.Passphrase)

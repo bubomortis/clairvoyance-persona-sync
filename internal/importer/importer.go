@@ -72,7 +72,9 @@ type Report struct {
 }
 
 func (r *Report) plan(format string, a ...any) { r.Plan = append(r.Plan, fmt.Sprintf(format, a...)) }
-func (r *Report) warn(format string, a ...any) { r.Warnings = append(r.Warnings, fmt.Sprintf(format, a...)) }
+func (r *Report) warn(format string, a ...any) {
+	r.Warnings = append(r.Warnings, fmt.Sprintf(format, a...))
+}
 func (r *Report) placed(what string, files ...string) {
 	r.Placed = append(r.Placed, what)
 	r.files = append(r.files, files...)
@@ -410,6 +412,12 @@ func mergeMemory(stage, lname string, in *clv.Instance, rep *Report, opts Option
 		return
 	}
 	overwrite := opts.mode() == clv.ModeOverwrite
+	// P3: refuse an empty/path-bearing persona key. In overwrite mode dstDir would
+	// collapse to the staff-memory root and RemoveAll would wipe ALL personas.
+	if !clv.ValidMemKey(lname) {
+		rep.warn("memory SKIPPED: refusing unsafe persona key %q (would target the staff-memory root)", lname)
+		return
+	}
 	for _, e := range ents {
 		if !e.IsDir() {
 			continue
@@ -441,7 +449,11 @@ func mergeMemory(stage, lname string, in *clv.Instance, rep *Report, opts Option
 // files. Differing existing files are backed up (S7) unless overwrite replaced the tree.
 func mergeDir(srcDir, dstDir string, overwrite, dryRun bool, rep *Report) (added, updated int) {
 	if overwrite && !dryRun {
-		_ = os.RemoveAll(dstDir)
+		// P3 defense-in-depth: never RemoveAll a path whose final segment is not a
+		// concrete persona folder (guards against an empty/'.'/'..' key slipping through).
+		if seg := filepath.Base(dstDir); clv.ValidMemKey(seg) {
+			_ = os.RemoveAll(dstDir)
+		}
 	}
 	filepath.Walk(srcDir, func(p string, fi os.FileInfo, err error) error {
 		if err != nil || fi.IsDir() {
