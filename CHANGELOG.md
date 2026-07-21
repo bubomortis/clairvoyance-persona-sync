@@ -5,7 +5,24 @@ All notable changes to `clvsync` are documented here. Format loosely follows
 
 ## [Unreleased]
 
+_Planned for v0.1.1: on-import auto-repoint of machine-local paths (`shell.cwd`, runtime cwd)
+that don't exist on the target machine, so a freshly imported persona starts without a manual
+`cwd` fix._
+
+## [0.1.0] — 2026-07-21
+
+First tagged release. **Validated by the two-machine Universal Resume integration test**
+(`docs/INTEGRATION-TEST.md`): a persona was exported from machine A, imported to machine B on a
+different drive layout, and resumed its session with full prior context and live continuation.
+Phases 0–7 complete: all four tiers, `age` encryption + `minisign` signing, per-OS data-dir
+resolution, secret-scan / zip-slip / integrity / non-destructive controls, and CI cross-compile
+for win/linux/mac.
+
 ### Fixed
+- **Conversation transcript now travels.** Clairvoyance names the transcript `{staffId}.json`,
+  and the staff id already carries the `staff-` prefix; the code prepended a second one and
+  looked for `staff-staff-…json`, which never exists — so the transcript was silently omitted
+  from every package and a resumed session opened blank. Fixed across export, import, and merge.
 - **Data-dir resolution now honors `CLAIRVOYANCE_BASE_USER_DATA`.** When the user has
   relocated their Clairvoyance store off the OS default (e.g. onto another drive), the app
   reads from that path via `CLAIRVOYANCE_BASE_USER_DATA`; `clvsync` previously ignored it and
@@ -44,8 +61,3 @@ All notable changes to `clvsync` are documented here. Format loosely follows
   requires `--allow-operator-sync`; import blocks by default and **hard-blocks** a
   self-overwrite of the operator running the import, regardless of the override.
 
-## [0.1.0] — pending
-First tagged release. Held for the two-machine Universal Resume integration test
-(`docs/INTEGRATION-TEST.md`). Phases 0–7 complete: all four tiers, `age` encryption +
-`minisign` signing, per-OS data-dir resolution, secret-scan / zip-slip / integrity /
-non-destructive controls, CI cross-compile for win/linux/mac.

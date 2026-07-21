@@ -4,7 +4,7 @@ Transport a Clairvoyance **Staff member** — or a whole **workspace** — from 
 
 A Staff member isn't one file — it's a definition (`profiles/{id}/staff.json` entry), a custom persona template, per-workspace memory (`.Clairvoyance/staff/{name}/`), and history (`agent-history/staff-{id}.json`). `clvsync` gathers those, scrubs anything that shouldn't leave the machine, and re-homes them on the target.
 
-> **Status: feature-complete (Phases 0–7), release pending one live test.** All four tiers, round-trip create-or-merge sync, the Sync Operator assisted-import flow, and the self-sync guard are implemented and tested. The signed `v0.1.0` release is held only for the two-machine Universal Resume integration test ([docs/INTEGRATION-TEST.md](docs/INTEGRATION-TEST.md)).
+> **Status: `v0.1.0` — validated on hardware.** All four tiers, round-trip create-or-merge sync, the Sync Operator assisted-import flow, and the self-sync guard are implemented and tested. The two-machine Universal Resume integration test ([docs/INTEGRATION-TEST.md](docs/INTEGRATION-TEST.md)) passed end to end: a persona exported from machine A imported to machine B on a different drive layout and resumed with full context and live continuation.
 
 ## Layered tiers
 
@@ -52,7 +52,8 @@ Cross-platform: resolves the Clairvoyance data directory per OS (Windows `%APPDA
 - [x] **Phase 5** — docs (Operator Guide, Security Audit re-verified), CI cross-compile (win/linux/mac) *(done)*
 - [x] **Phase 6** — round-trip **create-or-merge sync**: `--mode sync|overwrite|skip`, portable-vs-machine-local definition split (machine-local runtime preserved on a round-trip), memory union, history newest-wins, `--dry-run` preview *(done; unit-tested + live CLI-validated)*
 - [x] **Phase 7** — **Sync Operator** assisted-import persona + `AGENTS.md` runbook, `import-receipt.json` + `verify-import` restart reconciliation, guided interactive `import`, and the **S15 self-sync guard** *(done; unit-tested + live CLI-validated)*
-- [ ] signed `v0.1.0` release — **held for the two-machine Universal Resume integration test** ([docs/INTEGRATION-TEST.md](docs/INTEGRATION-TEST.md))
+- [x] **`v0.1.0`** — signed release (binaries + `SHA256SUMS` on GitHub Releases), validated by the two-machine Universal Resume integration test ([docs/INTEGRATION-TEST.md](docs/INTEGRATION-TEST.md))
+- [ ] **`v0.1.1`** — on-import auto-repoint of machine-local paths (`shell.cwd`/runtime) that don't exist on the target
 
 ## Round-trip sync & the Sync Operator
 
