@@ -62,6 +62,9 @@ func MergeDefinition(existing, incoming json.RawMessage) (merged []byte, changed
 	if err = json.Unmarshal(existing, &dst); err != nil {
 		return nil, nil, nil, fmt.Errorf("parse destination entry: %w", err)
 	}
+	if dst == nil { // null local entry → nil map; the dst[k] portable-copy below would panic (D-L1)
+		return nil, nil, nil, fmt.Errorf("destination staff entry is null")
+	}
 	if err = json.Unmarshal(incoming, &src); err != nil {
 		return nil, nil, nil, fmt.Errorf("parse incoming entry: %w", err)
 	}
@@ -116,6 +119,9 @@ func applyLocalTrust(entry json.RawMessage, mode string) (json.RawMessage, error
 	var top map[string]json.RawMessage
 	if err := json.Unmarshal(entry, &top); err != nil {
 		return nil, err
+	}
+	if top == nil { // entry == JSON null → nil map; the top["ai"] assignment below would panic (D-M2)
+		return nil, fmt.Errorf("staff entry is null")
 	}
 	ai := map[string]json.RawMessage{}
 	if raw, ok := top["ai"]; ok && len(raw) > 0 {

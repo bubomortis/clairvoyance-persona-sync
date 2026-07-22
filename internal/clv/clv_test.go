@@ -100,6 +100,17 @@ func TestApplyLocalTrust(t *testing.T) {
 	if entryPermissionMode(out4) != permissionModeStandard {
 		t.Error("ai:null should be replaced with a standard-trust ai object")
 	}
+	// D-M2: a whole-entry null must error cleanly, not panic on the nil top map.
+	if _, err := applyLocalTrust([]byte(`null`), permissionModeStandard); err == nil {
+		t.Error("null staff entry should return an error, not panic")
+	}
+}
+
+// D-L1: MergeDefinition must not panic when the destination (local) entry is null.
+func TestMergeDefinition_NullDestination(t *testing.T) {
+	if _, _, _, err := MergeDefinition([]byte(`null`), []byte(`{"name":"X"}`)); err == nil {
+		t.Error("null destination entry should return an error, not panic")
+	}
 }
 
 // D18: create strips incoming trust to standard; overwrite keeps THIS machine's grant;
