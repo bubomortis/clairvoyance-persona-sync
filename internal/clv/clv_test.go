@@ -91,6 +91,15 @@ func TestApplyLocalTrust(t *testing.T) {
 	if entryPermissionMode(out3) != permissionModeStandard {
 		t.Error("missing ai object should be created with standard trust")
 	}
+	// D-M1: "ai": null must not panic (json unmarshals null → nil map) and must yield
+	// a standard grant rather than crashing the import chokepoint.
+	out4, err4 := applyLocalTrust([]byte(`{"id":"s","ai":null}`), permissionModeStandard)
+	if err4 != nil {
+		t.Fatalf("ai:null returned error: %v", err4)
+	}
+	if entryPermissionMode(out4) != permissionModeStandard {
+		t.Error("ai:null should be replaced with a standard-trust ai object")
+	}
 }
 
 // D18: create strips incoming trust to standard; overwrite keeps THIS machine's grant;

@@ -123,6 +123,9 @@ func applyLocalTrust(entry json.RawMessage, mode string) (json.RawMessage, error
 			return nil, err
 		}
 	}
+	if ai == nil { // "ai": null unmarshals a map to nil (D-M1) — assigning to it would panic
+		ai = map[string]json.RawMessage{}
+	}
 	pm, _ := json.Marshal(mode)
 	ai["permissionMode"] = pm
 	aiRaw, err := json.Marshal(ai)
