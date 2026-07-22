@@ -5,6 +5,8 @@ All notable changes to `clvsync` are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-07-22
+
 ### Changed
 - **`verify-import`'s app-owned-aggregate exemption is now scoped to the profile store.**
   The §23.4 classifier previously matched any file merely *named* `staff.json`, or any file
