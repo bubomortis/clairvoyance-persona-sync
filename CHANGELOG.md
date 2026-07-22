@@ -6,6 +6,13 @@ All notable changes to `clvsync` are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Import flags that placed memory surfaces only at the persona's next session start (D19 Q1 / §21.5).**
+  Clairvoyance injects a Staff member's knowledge at session start (runtime init), not by polling — so
+  curated `.clairvoyance/staff` or `--include-agent-memory` content that lands mid-session is invisible
+  to a persona that is already running until it restarts. The import report now says so explicitly and
+  names the persona to restart/resume; the app-closed import + relaunch satisfies this automatically.
+  (clvsync deliberately does **not** touch the app-owned `staff-names.json` registry — whether it gates
+  memory discovery is unconfirmed, and it carries name-disambiguation semantics a wrong write could break.)
 - **`clvsync export --include-agent-memory` (D19).** Opt-in to also bundle the persona's rich
   Claude Code working memory — the `~/.claude/projects/<munge>/memory` store, keyed by the
   workspace cwd — on top of the curated `.clairvoyance/staff` memory that always travels. It is

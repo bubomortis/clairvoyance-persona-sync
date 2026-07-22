@@ -48,8 +48,12 @@ func TestRoundtrip_AgentMemory(t *testing.T) {
 
 	dst, _ := clv.Open(dstDir)
 	dst.AgentHome = dstHome
-	if _, err := importer.Apply(pkgPath, dst, importer.Options{Passphrase: "strong-enough-pass"}); err != nil {
+	rep, err := importer.Apply(pkgPath, dst, importer.Options{Passphrase: "strong-enough-pass"})
+	if err != nil {
 		t.Fatalf("import: %v", err)
+	}
+	if !rep.MemoryPlaced {
+		t.Error("agent-memory placed but MemoryPlaced not set (Q1 surfacing note would be missing)")
 	}
 
 	// The ghost cwd repointed to dstDir on import, so the memory lands under dstHome +

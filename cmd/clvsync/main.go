@@ -560,6 +560,11 @@ func printReport(rep *importer.Report) {
 	if len(rep.SkippedScopes) > 0 {
 		fmt.Printf("  skipped: %v\n", rep.SkippedScopes)
 	}
+	if rep.MemoryPlaced {
+		// Q1 / §21.5: Clairvoyance injects Staff knowledge at session start (runtime init),
+		// not by polling — so memory that lands mid-session is invisible until a restart.
+		fmt.Printf("  ⓘ memory takes effect at %s's NEXT SESSION START — restart/resume the persona to load it (a persona already running will not see it until then). The app-closed import + relaunch does this for you.\n", rep.PersonaName)
+	}
 	if rep.ReceiptPath != "" {
 		fmt.Printf("  receipt: %s  (run 'clvsync verify-import --receipt %s' after restart)\n", rep.ReceiptPath, rep.ReceiptPath)
 	}

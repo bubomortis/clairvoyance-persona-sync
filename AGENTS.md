@@ -79,7 +79,12 @@ Staff steps (this is the Sync Operator's job if present):
    (add `--mode overwrite|skip` only if the user asked; default is `sync` = create-or-merge).
 5. Tell the user to **reopen Clairvoyance**, then run
    `clvsync verify-import --receipt import-receipt.json` and read back the pass/fail table.
-6. Remind the user that whether the session is *offered for resume* is their check in the UI.
+6. If the import placed **memory** (the report shows the "next session start" notice), tell the user
+   the imported persona picks up its memory **only when its runtime (re)starts** — Clairvoyance injects
+   Staff knowledge at session start, not continuously. Reopening the app (step 5) is that restart, so a
+   persona created by this import loads its memory on first launch; a persona that was **already running**
+   during an app-open import must be restarted before it will see the new memory.
+7. Remind the user that whether the session is *offered for resume* is their check in the UI.
 
 **Non-CLI fallback:** `clvsync import` with **no** `--in` runs a guided interactive prompt
 (file → passphrase → preview → confirm → apply). A double-clickable `import.cmd` /

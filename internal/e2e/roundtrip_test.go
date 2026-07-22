@@ -202,6 +202,10 @@ func TestRoundtrip_EncryptedSigned(t *testing.T) {
 	if rep.PersonaID != staffID {
 		t.Fatalf("wrong persona id: %s", rep.PersonaID)
 	}
+	// Q1 (§21.5): placing curated memory flags that it surfaces on next session start.
+	if !rep.MemoryPlaced {
+		t.Error("curated memory placed but MemoryPlaced not set (Q1 surfacing note would be missing)")
+	}
 
 	// assert definition merged
 	found, err := dst.FindPersona("Testy")

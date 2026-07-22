@@ -66,6 +66,7 @@ type Report struct {
 	SessionIDs       []string
 	PortableUpdated  []string
 	MachineLocalKept []string
+	MemoryPlaced     bool // curated and/or agent memory was placed → surfaces only on next session start (Q1/§21.5)
 	ReviewNote       string
 	ReceiptPath      string
 
@@ -324,6 +325,7 @@ func mergeAgentMemory(stage, subdir string, in *clv.Instance, rep *Report, opts 
 		return
 	}
 	rep.plan("agent-memory: place rich working memory → %s", dstDir)
+	rep.MemoryPlaced = true // Q1: surfaces on the persona's next session start
 	if opts.DryRun {
 		return
 	}
@@ -524,6 +526,7 @@ func mergeMemory(stage, lname string, in *clv.Instance, rep *Report, opts Option
 		dstDir := filepath.Join(clv.StaffDir(base), lname)
 		added, updated := mergeDir(srcDir, dstDir, overwrite, opts.DryRun, rep)
 		rep.plan("memory/%s: +%d new, ~%d updated", scope, added, updated)
+		rep.MemoryPlaced = true // Q1: surfaces on the persona's next session start
 		if !opts.DryRun {
 			rep.placed("memory/" + scope)
 		}
