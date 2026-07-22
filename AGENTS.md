@@ -124,13 +124,30 @@ Recommend a tier-aware default; the user still decides:
   type on export or import once paired. Set it up **on each machine**:
   1. `clvsync cred model identity --pairing travel` (or `--pairing cloud-sync` on Plus+).
   2. `clvsync cred init` — creates + seals this machine's identity; prints its **public** key.
-  3. Exchange **public** keys (never the private key): each machine runs
-     `clvsync cred pair --name <other-machine> --key <age1…>` (or `--in <pairing-doc>` from
-     `cred pubkey --out`). With `--pairing travel`, after the first exchange the sender's
-     public key rides along inside each package and is trusted automatically.
-     With `--pairing cloud-sync` (Plus+), publish this machine's **public** key to a
-     Cloud-Synced note and read the peer's from it — pairing is **eventual**, so poll with a
-     "waiting to sync" message rather than failing once.
+  3. Exchange **public** keys (never the private key). Print this machine's key with
+     `clvsync cred pubkey` (or write a name+key doc with `cred pubkey --out mine.pair`),
+     then choose a pairing channel:
+     - **`--pairing travel` (any tier):** hand the other machine your `age1…` key any way you
+       like and run `clvsync cred pair --name <other-machine> --key <age1…>` (or
+       `--in <pairing-doc>`) on each side. After the first exchange the sender's public key
+       also rides inside each package and is trusted automatically.
+     - **`--pairing cloud-sync` (Plus+):** publish the public key as a **Cloud-Synced note**
+       and let it replicate to the other machine. Concretely, the operator:
+       1. Publishes with **`create_note`** — `folder: "clvsync-pairing"`,
+          `title: "pubkey-<this-hostname>"`, body = the `age1…` line **only**. (Use
+          `create_note`, the local Notes store that Cloud Sync replicates — **not**
+          `domain_notes`, which is org/domain-scoped and does not cross your own machines.)
+          Writing the note is what starts propagation; Cloud Sync is a background
+          watcher + periodic reconcile, so it is **eventual**, not instant.
+       2. On the peer machine, **polls** for the synced note at
+          `<data-dir>/notes/clvsync-pairing/pubkey-<peer-hostname>.md` (it also shows in the
+          Notes sidebar) with a friendly "waiting for your other machine to sync" message and
+          a timeout — never one-shot-fail. Reads the `age1…` line and runs
+          `clvsync cred pair --name <peer-hostname> --key <age1…>`.
+       Cloud Sync only replicates notes/docs/exhibits — it **never** touches the sealed
+       private identity (kept outside that scope), so a pubkey note is safe by construction.
+       Transparent pairing needs Plus+; already-paired machines keep working after a
+       downgrade (keys are local), only **new** pairings lose the channel.
   After that, `clvsync export`/`import` need no passphrase — the model handles it.
 - **`shared-passphrase`** — one passphrase both machines share. On each machine, verify
   `CLVSYNC_PASSPHRASE` is populated in **Settings → Credentials** (a fresh `credentials` read,

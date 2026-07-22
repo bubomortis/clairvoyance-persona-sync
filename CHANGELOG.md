@@ -5,7 +5,15 @@ All notable changes to `clvsync` are documented here. Format loosely follows
 
 ## [Unreleased]
 
-_Nothing yet._
+### Docs
+- **Cloud-Sync pairing recipe made concrete (AGENTS.md §4).** The Model 2c
+  `--pairing cloud-sync` step now names the exact operator flow: publish the public
+  key with **`create_note`** (`folder: clvsync-pairing`, `title: pubkey-<hostname>`) —
+  the local Notes store Cloud Sync replicates, **not** `domain_notes` — then the peer
+  polls `<data-dir>/notes/clvsync-pairing/pubkey-<peer>.md` and runs `cred pair`.
+  Verified against the live Cloud Sync engine: notes propagate (create → synced with a
+  cloudId), and the sealed private identity is outside Cloud Sync's scope, so a pubkey
+  note is safe by construction.
 
 ## [0.2.4] - 2026-07-22
 
