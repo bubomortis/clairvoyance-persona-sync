@@ -83,7 +83,18 @@ func download(ctx context.Context, rawURL string, max int64) ([]byte, error) {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "clvsync-selfupdate")
-	resp, err := (&http.Client{Timeout: 5 * time.Minute}).Do(req)
+	client := &http.Client{
+		Timeout: 5 * time.Minute,
+		// L1: re-assert the allowlist on every redirect hop, not just the initial URL,
+		// so a redirect can't land the download on an off-allowlist host.
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return fmt.Errorf("stopped after 10 redirects")
+			}
+			return assertGitHubHTTPS(req.URL.String())
+		},
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}

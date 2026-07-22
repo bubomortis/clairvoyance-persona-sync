@@ -20,6 +20,10 @@ func TestAssertGitHubHTTPS(t *testing.T) {
 		{"https://notgithubusercontent.com/x", false},             // suffix trick
 		{"ftp://github.com/x", false},                             // wrong scheme
 		{"://bad", false},                                         // unparseable
+		{"https://github.com@evil.com/x", false},                  // N1: userinfo trick → host evil.com
+		{"https://evil.com@github.com/x", true},                   // N1: userinfo noise, real host github.com
+		{"https://GitHub.com/o/r/releases/download/v1/x", true},   // N1: case-fold
+		{"https:///x", false},                                     // N1: empty host
 	}
 	for _, c := range cases {
 		err := assertGitHubHTTPS(c.url)
