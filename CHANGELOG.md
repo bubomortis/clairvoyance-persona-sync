@@ -5,7 +5,13 @@ All notable changes to `clvsync` are documented here. Format loosely follows
 
 ## [Unreleased]
 
-_Nothing yet._
+### Security
+- **Self-update download hardening.** `clvsync update` now caps each download at a fixed size
+  (100 MiB binary / 1 MiB `SHA256SUMS`) via `io.LimitReader`, refusing an over-cap body instead of
+  reading it into memory (SU3), and refuses any asset URL that is not HTTPS on `github.com` or a
+  `*.githubusercontent.com` host (SU4).
+- **CI Actions are pinned to commit SHAs** (CI1) instead of mutable `@vN` tags, so a compromised or
+  retagged action cannot silently enter the release pipeline that self-update trusts.
 
 ## [0.2.1] - 2026-07-21
 

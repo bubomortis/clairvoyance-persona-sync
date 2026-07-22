@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -20,6 +21,13 @@ import (
 	"time"
 
 	"github.com/bubomortis/clairvoyance-persona-sync/internal/release"
+)
+
+// Download size caps (SU3): a self-updating tool must never be talked into reading an
+// unbounded body into memory. The binary is ~10 MB; SHA256SUMS is a few hundred bytes.
+const (
+	maxBinaryBytes = 100 << 20 // 100 MiB
+	maxSumsBytes   = 1 << 20   // 1 MiB
 )
 
 // AssetName is the release asset name for the current OS/arch, e.g.
@@ -45,11 +53,11 @@ func Apply(ctx context.Context, rel *release.Release) (string, error) {
 		return "", fmt.Errorf("release %s has no SHA256SUMS to verify against; refusing to install unverified binary", rel.Tag)
 	}
 
-	bin, err := download(ctx, binURL)
+	bin, err := download(ctx, binURL, maxBinaryBytes)
 	if err != nil {
 		return "", fmt.Errorf("download %s: %w", name, err)
 	}
-	sums, err := download(ctx, sumsURL)
+	sums, err := download(ctx, sumsURL, maxSumsBytes)
 	if err != nil {
 		return "", fmt.Errorf("download SHA256SUMS: %w", err)
 	}
@@ -64,9 +72,13 @@ func Apply(ctx context.Context, rel *release.Release) (string, error) {
 	return replaceSelf(bin)
 }
 
-// download fetches a URL fully into memory (release assets are small, ~10 MB).
-func download(ctx context.Context, url string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+// download fetches a URL into memory, reading at most max bytes (SU3) and refusing
+// any URL that is not HTTPS on a GitHub host (SU4). Release assets are small.
+func download(ctx context.Context, rawURL string, max int64) ([]byte, error) {
+	if err := assertGitHubHTTPS(rawURL); err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +91,40 @@ func download(ctx context.Context, url string) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("%s", resp.Status)
 	}
-	return io.ReadAll(resp.Body)
+	return readCapped(resp.Body, max)
+}
+
+// readCapped reads at most max bytes from r, refusing (rather than truncating) a body
+// that exceeds the cap. It reads one byte past max to distinguish "exactly max" from
+// "over the cap".
+func readCapped(r io.Reader, max int64) ([]byte, error) {
+	b, err := io.ReadAll(io.LimitReader(r, max+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(b)) > max {
+		return nil, fmt.Errorf("download exceeds %d-byte cap — refusing", max)
+	}
+	return b, nil
+}
+
+// assertGitHubHTTPS refuses any asset URL that is not HTTPS on github.com or a
+// *.githubusercontent.com host (release assets redirect to the latter). This is
+// defence-in-depth against a tampered release payload pointing the updater at an
+// attacker-controlled or plaintext endpoint.
+func assertGitHubHTTPS(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("bad asset URL: %w", err)
+	}
+	if u.Scheme != "https" {
+		return fmt.Errorf("refusing non-HTTPS asset URL %q", rawURL)
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "github.com" || host == "api.github.com" || strings.HasSuffix(host, ".githubusercontent.com") {
+		return nil
+	}
+	return fmt.Errorf("refusing asset URL on untrusted host %q", host)
 }
 
 // checksumFor finds the hex digest for name in a SHA256SUMS body. Lines are
