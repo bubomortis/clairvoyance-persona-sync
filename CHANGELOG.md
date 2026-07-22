@@ -5,6 +5,10 @@ All notable changes to `clvsync` are documented here. Format loosely follows
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.2.2] - 2026-07-21
+
 ### Changed
 - **A Tier-1 persona package no longer carries the raw conversation transcript (D19).** A lone
   `agent-history` file is a trap: on the destination it is clobbered by the first fresh chat and is
@@ -26,6 +30,12 @@ All notable changes to `clvsync` are documented here. Format loosely follows
   **existing** persona keeps *this* machine's prior grant regardless of what the package carried —
   on sync-merge (machine-local fields are preserved anyway) and on wholesale overwrite alike. The
   import report surfaces a trust note whenever it resets or preserves the grant.
+
+### Fixed
+- **Import no longer panics on a crafted/degenerate staff entry.** A staff entry whose `ai` field —
+  or the whole entry — was the JSON literal `null` unmarshalled to a nil Go map and crashed the
+  import chokepoint (a reliable crash on a hostile package; fail-closed on trust, but a crash all
+  the same). The definition merge/trust path now guards every such map and errors cleanly instead.
 
 ## [0.2.1] - 2026-07-21
 
