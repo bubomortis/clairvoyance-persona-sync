@@ -49,5 +49,10 @@ func TestRoundtrip_Tier4_HeavyAddon(t *testing.T) {
 	if rep.Tier != 4 {
 		t.Fatalf("expected tier 4, got %d", rep.Tier)
 	}
+	// Q1 negative: a Tier-4 heavy overlay carries only regenerable heavy dirs — no
+	// session-start memory — so it must NOT emit the "restart to surface" notice.
+	if rep.MemoryPlaced {
+		t.Error("Tier-4 heavy overlay placed no memory but MemoryPlaced was set (false surfacing notice)")
+	}
 	assertFile(t, filepath.Join(dstWSPath, "venv", "big.dll"), "PRETEND-HUGE-BINARY")
 }
