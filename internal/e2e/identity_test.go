@@ -1,6 +1,8 @@
 package e2e
 
 import (
+	"bytes"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -72,6 +74,21 @@ func TestRoundtrip_IdentityModel(t *testing.T) {
 		t.Fatalf("sender name did not travel: got %q", rep.SenderName)
 	}
 	assertFile(t, filepath.Join(dstDir, ".Clairvoyance", "staff", "testy", "index.md"), wantHome)
+
+	// Defense-in-depth (Jypsen nit): the sender's PRIVATE key must never appear in
+	// the produced package bytes — not the "AGE-SECRET-KEY-" prefix, not the key
+	// itself. Locks the "private identity never travels" invariant against a future
+	// bug that both embeds a private key and drops encryption.
+	raw, err := os.ReadFile(pkgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(raw, []byte("AGE-SECRET-KEY-")) {
+		t.Fatal("package bytes contain an age private-key marker — a private key leaked into the package")
+	}
+	if bytes.Contains(raw, []byte(sender.String())) {
+		t.Fatal("package bytes contain the sender's private key")
+	}
 }
 
 // TestRoundtrip_MultiRecipient proves a single package encrypted to two peers can

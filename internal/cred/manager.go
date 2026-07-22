@@ -238,16 +238,23 @@ func (m *Manager) savePeers(peers map[string]string) error {
 	return writeFilePriv(m.path(filePeers), b, 0o600)
 }
 
-// Recipients returns all paired peer public keys, sorted for deterministic
-// output. These are the encrypt targets for Model 2c.
+// Recipients returns the paired peer public keys, deduplicated by value and
+// sorted for deterministic output. These are the encrypt targets for Model 2c.
+// Dedup matters because the same key can be trusted under two names (e.g. a
+// manual pairing plus a travel-package auto-record), which would otherwise emit
+// a redundant age stanza.
 func (m *Manager) Recipients() ([]string, error) {
 	peers, err := m.loadPeers()
 	if err != nil {
 		return nil, err
 	}
+	seen := make(map[string]bool, len(peers))
 	out := make([]string, 0, len(peers))
 	for _, k := range peers {
-		out = append(out, k)
+		if !seen[k] {
+			seen[k] = true
+			out = append(out, k)
+		}
 	}
 	sort.Strings(out)
 	return out, nil

@@ -194,6 +194,29 @@ func TestPeerTOFU(t *testing.T) {
 	}
 }
 
+func TestRecipientsDedup(t *testing.T) {
+	m := newMgr(t, NoopSealer{})
+	shared := genPub(t)
+	other := genPub(t)
+	// Same key trusted under two names (manual pairing + travel auto-record).
+	if _, err := m.AddPeer("machineA", shared); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.AddPeer("hostA", shared); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.AddPeer("machineB", other); err != nil {
+		t.Fatal(err)
+	}
+	recips, err := m.Recipients()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recips) != 2 {
+		t.Fatalf("expected 2 unique recipients (dup key collapsed), got %d: %v", len(recips), recips)
+	}
+}
+
 func TestResolveEncrypt(t *testing.T) {
 	// No model → ErrNoModel.
 	m := newMgr(t, NoopSealer{})
