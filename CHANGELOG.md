@@ -5,6 +5,10 @@ All notable changes to `clvsync` are documented here. Format loosely follows
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.2.4] - 2026-07-22
+
 ### Added
 - **Credential model — the full three-model encryption selector (D17 Phase 2, §20).**
   A new `clvsync cred` command family lets you choose, per machine, how packages are
