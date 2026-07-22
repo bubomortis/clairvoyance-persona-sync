@@ -686,13 +686,21 @@ func cmdVerifyImport(args []string) error {
 	fmt.Printf("verify-import: %s (tier %d, mode %s, imported %s)\n", rec.PersonaName, rec.Tier, rec.Mode, rec.ImportedAt)
 	for _, l := range res.Lines {
 		mark := "PASS"
-		if !l.OK {
+		switch {
+		case l.Advisory:
+			mark = "NOTE"
+		case !l.OK:
 			mark = "FAIL"
 		}
 		fmt.Printf("  [%s] %-9s %s\n", mark, l.Layer, l.Detail)
 	}
 	if !res.OK {
 		return fmt.Errorf("reconciliation found mismatches — see FAIL rows above")
+	}
+	if res.Advisories > 0 {
+		fmt.Printf("  %d NOTE row(s): app-owned aggregate files (staff.json / agent-history) that Clairvoyance\n", res.Advisories)
+		fmt.Println("  rewrites on reopen — an expected post-restart change, not corruption. Your persona's")
+		fmt.Println("  definition and curated memory verified strictly above.")
 	}
 	fmt.Println("  all checks passed; note: whether the session is offered for RESUME is still a human check in the UI.")
 	return nil

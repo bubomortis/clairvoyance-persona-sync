@@ -5,6 +5,31 @@ All notable changes to `clvsync` are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- **`verify-import` no longer fails on app-owned aggregate files (§23.4).** After an
+  app-closed import and restart, Clairvoyance rewrites its own aggregate files — the profile
+  `staff.json` roster and the `agent-history/<id>.json` transcripts it re-flushes from
+  memory — so their import-time hashes no longer match. That is an expected rewrite, not
+  corruption. `verify-import` now classifies those two file kinds as **advisory `NOTE`
+  rows** (reconciliation still passes) while continuing to verify the persona's own
+  definition and its static curated `.clairvoyance/staff` memory **strictly** (a real
+  mismatch there still FAILs). A *missing* aggregate is still a failure — the app rewrites
+  it, it does not delete it. The receipt records an `aggregate` flag per file, and the
+  classifier is also applied by path so older receipts benefit too.
+
+### Added
+- **Hardened app-closed import finisher — `scripts/clvsync-import-runner.ps1` (§23).**
+  A PowerShell runner the Sync Operator stages as a detached, OS-owned **one-shot Scheduled
+  Task**, resolving the operator chicken-and-egg (the operator runs *inside* the app, but a
+  clean import needs the app **closed**). It snapshots the app-owned aggregates, gracefully
+  closes Clairvoyance and **waits for the single-instance lock to settle** before importing,
+  runs `clvsync import --receipt`, then makes a **best-effort relaunch that is decoupled from
+  import success** (a failed relaunch degrades to "start it yourself" and never risks the
+  imported data), writes an `import-done.json` marker, and self-deletes its one-shot task.
+  It never takes or logs a passphrase, and it is **never self-triggering** — the operator
+  registers it and, on a separate explicit-approval turn, triggers the task (the two-turn
+  gate).
+
 ### Docs
 - **Cloud-Sync pairing recipe made concrete (AGENTS.md §4).** The Model 2c
   `--pairing cloud-sync` step now names the exact operator flow: publish the public

@@ -370,8 +370,20 @@ func TestReceipt_VerifyImport(t *testing.T) {
 		t.Fatal("verify-import reconciliation should pass on a clean import")
 	}
 
-	// Tamper with a placed file → reconciliation must fail.
-	os.WriteFile(rec.Files[0].Path, []byte("tampered"), 0o644)
+	// Tamper with a placed *static* file → reconciliation must fail. App-owned aggregates
+	// (staff.json / agent-history) are expected to be rewritten by the app on reopen and
+	// are exempt from a mismatch failure (§23.4), so pick a non-aggregate victim.
+	var victim string
+	for _, f := range rec.Files {
+		if !importer.IsAppOwnedAggregate(f.Path) {
+			victim = f.Path
+			break
+		}
+	}
+	if victim == "" {
+		t.Fatal("no non-aggregate placed file to tamper with")
+	}
+	os.WriteFile(victim, []byte("tampered"), 0o644)
 	if importer.VerifyReceipt(rec, dst2).OK {
 		t.Fatal("verify-import should detect a tampered placed file")
 	}

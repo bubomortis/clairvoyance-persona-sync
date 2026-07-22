@@ -18,9 +18,25 @@ import (
 
 // FileRef is a placed file plus the hash the finisher recorded for it.
 type FileRef struct {
-	Path   string `json:"path"` // absolute on the target machine
-	SHA256 string `json:"sha256"`
-	Bytes  int64  `json:"bytes"`
+	Path      string `json:"path"` // absolute on the target machine
+	SHA256    string `json:"sha256"`
+	Bytes     int64  `json:"bytes"`
+	Aggregate bool   `json:"aggregate,omitempty"` // app-owned aggregate the app rewrites on reopen (§23.4)
+}
+
+// IsAppOwnedAggregate reports whether p is a Clairvoyance app-owned *aggregate* file —
+// one the running app rewrites wholesale when it next starts (the profile `staff.json`
+// roster, and the per-persona `agent-history/<id>.json` transcripts it re-flushes from
+// memory). Such a file is EXPECTED to hash-differ from the import-time receipt once the
+// app has reopened; that is a normal rewrite, not corruption, so verify-import classifies
+// its mismatch as an advisory rather than a failure (§23.4). The persona's own definition
+// presence and its curated `.clairvoyance/staff` memory are static and verified strictly.
+func IsAppOwnedAggregate(p string) bool {
+	if filepath.Base(p) == "staff.json" {
+		return true
+	}
+	// agent-history/<id>.json — the per-persona transcript store the app re-flushes.
+	return filepath.Base(filepath.Dir(p)) == "agent-history"
 }
 
 // Receipt is the durable record of one import, written by the finisher and read
@@ -82,7 +98,7 @@ func (r *Receipt) addFile(p string) {
 	if err != nil {
 		return
 	}
-	r.Files = append(r.Files, FileRef{Path: p, SHA256: sum, Bytes: n})
+	r.Files = append(r.Files, FileRef{Path: p, SHA256: sum, Bytes: n, Aggregate: IsAppOwnedAggregate(p)})
 }
 
 // Write serializes the receipt to path.
@@ -112,15 +128,17 @@ func LoadReceipt(path string) (*Receipt, error) {
 
 // CheckLine is one reconciliation result line.
 type CheckLine struct {
-	Layer  string
-	Detail string
-	OK     bool
+	Layer    string
+	Detail   string
+	OK       bool
+	Advisory bool // §23.4: an expected, non-failing note (an app-owned aggregate was rewritten)
 }
 
 // VerifyResult is the outcome of a verify-import reconciliation.
 type VerifyResult struct {
-	Lines []CheckLine
-	OK    bool
+	Lines      []CheckLine
+	OK         bool
+	Advisories int // count of advisory (non-failing) notes, §23.4
 }
 
 func (v *VerifyResult) add(ok bool, layer, detail string) {
@@ -128,6 +146,12 @@ func (v *VerifyResult) add(ok bool, layer, detail string) {
 	if !ok {
 		v.OK = false
 	}
+}
+
+// advisory records an expected, non-failing note. It does not clear OK (§23.4).
+func (v *VerifyResult) advisory(layer, detail string) {
+	v.Lines = append(v.Lines, CheckLine{Layer: layer, Detail: detail, OK: true, Advisory: true})
+	v.Advisories++
 }
 
 // VerifyReceipt reconciles a receipt against live on-disk state (§19.2). It is
@@ -152,16 +176,22 @@ func VerifyReceipt(r *Receipt, in *clv.Instance) *VerifyResult {
 		}
 	}
 
-	// Placed files hash-match the receipt.
+	// Placed files hash-match the receipt. App-owned aggregates (§23.4) are exempt from a
+	// hash-mismatch failure — Clairvoyance rewrites them on reopen, so a post-restart
+	// mismatch is expected, not corruption. A *missing* aggregate is still a failure (the
+	// app rewrites it, it does not delete it), as is any mismatch on a static file.
 	for _, f := range r.Files {
+		agg := f.Aggregate || IsAppOwnedAggregate(f.Path)
 		sum, n, err := hashFile(f.Path)
 		switch {
 		case err != nil:
 			v.add(false, "file", "missing: "+f.Path)
-		case sum != f.SHA256 || n != f.Bytes:
-			v.add(false, "file", "hash mismatch: "+f.Path)
-		default:
+		case sum == f.SHA256 && n == f.Bytes:
 			v.add(true, "file", short(f.Path))
+		case agg:
+			v.advisory("file", "app-owned aggregate rewritten by Clairvoyance since import (expected): "+short(f.Path))
+		default:
+			v.add(false, "file", "hash mismatch: "+f.Path)
 		}
 	}
 

@@ -59,9 +59,53 @@ read-only **expected-vs-actual reconciliation**:
 - each session id is registered in `agent-sessions.json`;
 - the workspace is registered (Tier 3/4).
 
+**App-owned aggregates are advisory, not failures (§23.4).** Once the app reopens it
+rewrites its own aggregate files — the profile `staff.json` roster and the
+`agent-history/<id>.json` transcripts it re-flushes from memory — so their import-time
+hashes no longer match. `verify-import` classifies those as **`NOTE`** rows (reconciliation
+still passes) rather than `FAIL`, because a post-restart rewrite is expected, not
+corruption. Your persona's own definition and its static curated `.clairvoyance/staff`
+memory are still verified **strictly**; a real mismatch there — or a *missing* aggregate —
+is still a `FAIL`.
+
 **Boundary:** this proves correct **on-disk registration**. Whether the session is actually
 *offered for resume* is a human eyeball check in the UI (that's what the two-machine
 integration test covers).
+
+## Hardened app-closed finisher (§23)
+
+The plain "operator runs `import` with the app closed" step has a chicken-and-egg: the
+operator runs *inside* Clairvoyance, so the moment it closes the app its own turn ends — it
+cannot then run the import. `scripts/clvsync-import-runner.ps1` resolves this by moving the
+Finish phase into a detached, OS-owned **one-shot Scheduled Task** that outlives both the
+app and the operator's turn.
+
+The runner, in order:
+
+1. Logs to a stable work dir and **snapshots** the app-owned aggregates (`staff.json` per
+   profile + `clairvoyance-store.json`) as belt-and-suspenders over clvsync's own
+   `*.clvsync-bak`.
+2. Gracefully closes Clairvoyance (`CloseMainWindow` → force-kill survivors) and then
+   **waits for the single-instance lock to settle** — a process-stability window — before
+   importing. Relaunching before the lock clears makes the new instance immediately quit,
+   which is exactly the failure the first test run hit.
+3. Runs `clvsync import --in <pkg> --receipt <file> --mode sync`, capturing the exit code
+   and output.
+4. Makes a **best-effort relaunch with retries that is decoupled from import success** —
+   the import is the safe critical operation; a relaunch that fails degrades to a logged
+   "start Clairvoyance yourself" note and **never** risks the imported data.
+5. Writes `import-done.json` (`importOk`, `relaunchOk`, timestamps, log/receipt paths) for
+   the operator to read on the next session, and self-deletes its one-shot task (keeping the
+   log, receipt, and marker).
+
+**Two-turn approval gate (hard rule).** The operator **stages** the runner and **registers**
+the task on one turn, shows the user exactly what it will do, and stops — triggering nothing.
+Only on a *separate* explicit approval does it trigger the task (at which point the app
+closes and the operator's turn may end, as expected). Never stage-and-trigger in one turn.
+
+**Secrets.** The runner never takes or logs a passphrase. The identity credential model
+needs none; for a passphrase model, `CLVSYNC_PASSPHRASE` must be present in the task's own
+session environment (never as a task argument, never in the script or log).
 
 ## Don't sync the operator (S15, §19.3)
 

@@ -77,8 +77,21 @@ Staff steps (this is the Sync Operator's job if present):
 3. Tell the user to **close Clairvoyance** (the import writes app-owned files).
 4. Run the finisher: `clvsync import --in <path> --receipt import-receipt.json`
    (add `--mode overwrite|skip` only if the user asked; default is `sync` = create-or-merge).
+   - **Robust option (recommended when *you* are the operator running inside the app).**
+     Because closing the app ends your turn, hand the Finish phase to the hardened runner
+     `scripts/clvsync-import-runner.ps1` staged as a detached **one-shot Scheduled Task** (it
+     closes the app, waits for the single-instance lock to settle, imports, then relaunches
+     best-effort — decoupled from import success — and writes `import-done.json`). Use the
+     **two-turn gate**: on this turn, stage the script and register the task and **show the
+     user what it will do without triggering it**; only on the user's *next, explicit*
+     approval do you trigger the task. Never stage-and-trigger in one turn. See
+     `docs/SYNC-OPERATOR.md` § "Hardened app-closed finisher."
 5. Tell the user to **reopen Clairvoyance**, then run
    `clvsync verify-import --receipt import-receipt.json` and read back the pass/fail table.
+   - Expect `NOTE` rows for the app-owned aggregates (`staff.json` / `agent-history`): the
+     app rewrites those on reopen, so their hash mismatch is **expected, not corruption**
+     (§23.4). The persona's own definition and curated memory are verified strictly; a real
+     mismatch there — or a genuinely missing file — is a `FAIL`.
 6. If the import placed **memory** (the report shows the "next session start" notice), tell the user
    the imported persona picks up its memory **only when its runtime (re)starts** — Clairvoyance injects
    Staff knowledge at session start, not continuously. Reopening the app (step 5) is that restart, so a
