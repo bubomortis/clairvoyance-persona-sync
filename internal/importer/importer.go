@@ -248,11 +248,14 @@ func applyPersona(stage string, meta pkg.Meta, in *clv.Instance, opts Options) (
 	// so a freshly created/overwritten persona starts without a manual cwd fix.
 	entry, repoints := repointDeadPaths(entry, in.DataDir)
 
-	action, changed, preserved, err := in.MergeStaffEntry(prof, entry, meta.PersonaID, mode, opts.DryRun)
+	action, changed, preserved, trustNote, err := in.MergeStaffEntry(prof, entry, meta.PersonaID, mode, opts.DryRun)
 	if err != nil {
 		return nil, err
 	}
 	rep.PortableUpdated, rep.MachineLocalKept = changed, preserved
+	if trustNote != "" {
+		rep.warn("trust: %s", trustNote) // D18: permissionMode is a local grant
+	}
 	switch action {
 	case "created", "overwritten":
 		if action == "created" {
@@ -337,9 +340,12 @@ func applyWorkspace(stage string, meta pkg.Meta, in *clv.Instance, opts Options)
 			continue
 		}
 		entry, repoints := repointDeadPaths(entry, in.DataDir)
-		action, _, _, err := in.MergeStaffEntry(prof, entry, r.ID, mode, opts.DryRun)
+		action, _, _, trustNote, err := in.MergeStaffEntry(prof, entry, r.ID, mode, opts.DryRun)
 		if err != nil {
 			return nil, err
+		}
+		if trustNote != "" {
+			rep.warn("trust: roster %s: %s", r.Name, trustNote) // D18
 		}
 		rep.plan("roster: %s persona %s", action, r.Name)
 		if action == "created" || action == "overwritten" {

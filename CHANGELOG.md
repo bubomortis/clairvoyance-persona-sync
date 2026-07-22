@@ -12,6 +12,12 @@ All notable changes to `clvsync` are documented here. Format loosely follows
   `*.githubusercontent.com` host (SU4).
 - **CI Actions are pinned to commit SHAs** (CI1) instead of mutable `@vN` tags, so a compromised or
   retagged action cannot silently enter the release pipeline that self-update trusts.
+- **Tool-run permission (`permissionMode`) never travels with a persona (D18).** `permissionMode`
+  is a machine-local *trust* grant. On import, a **newly created** persona is placed at `standard`
+  (any `skip-permissions` in the package is stripped; re-grant it locally if wanted), and an
+  **existing** persona keeps *this* machine's prior grant regardless of what the package carried —
+  on sync-merge (machine-local fields are preserved anyway) and on wholesale overwrite alike. The
+  import report surfaces a trust note whenever it resets or preserves the grant.
 
 ## [0.2.1] - 2026-07-21
 
