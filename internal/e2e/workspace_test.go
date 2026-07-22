@@ -61,6 +61,10 @@ func TestRoundtrip_Tier3_Workspace(t *testing.T) {
 	if rep.Tier != 3 {
 		t.Fatalf("expected tier 3, got %d", rep.Tier)
 	}
+	// Q1: the workspace tree carries roster memory → surfacing note must fire for Tier 3 too.
+	if !rep.MemoryPlaced {
+		t.Error("Tier-3 workspace import placed the content tree but MemoryPlaced not set (Q1)")
+	}
 
 	// workspace registered on target
 	dst2, _ := clv.Open(dstDir)

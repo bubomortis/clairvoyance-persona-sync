@@ -383,6 +383,7 @@ func applyWorkspace(stage string, meta pkg.Meta, in *clv.Instance, opts Options)
 
 	if wsSrc := filepath.Join(stage, "workspace"); dirExists(wsSrc) {
 		rep.plan("workspace: copy content tree")
+		rep.MemoryPlaced = true // the tree carries the roster's curated .Clairvoyance/staff memory (Q1)
 		if !opts.DryRun {
 			if err := pkg.CopyTree(wsSrc, ws.Path, nil); err != nil {
 				return nil, err
