@@ -5,6 +5,14 @@ All notable changes to `clvsync` are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- **A Tier-1 persona package no longer carries the raw conversation transcript (D19).** A lone
+  `agent-history` file is a trap: on the destination it is clobbered by the first fresh chat and is
+  unusable without a resumable session anyway — this is what lost a test persona's memory. Tier-1
+  continuity now rides on the curated `.clairvoyance/staff` memory that already travels. The
+  transcript travels at **Tier 2** (as part of Universal Resume, where it is actually replayable)
+  and inside a whole-workspace **Tier 3** package (workspace scope is unchanged).
+
 ### Security
 - **Self-update download hardening.** `clvsync update` now caps each download at a fixed size
   (100 MiB binary / 1 MiB `SHA256SUMS`) via `io.LimitReader`, refusing an over-cap body instead of

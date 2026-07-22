@@ -31,8 +31,10 @@ func Workspace(in *clv.Instance, wsName, outPath string, opts Options) (*Result,
 			// S15: never carry the Sync Operator in a workspace package by default.
 			continue
 		}
-		// memory=false: it travels inside workspace/.Clairvoyance/staff
-		if err := stagePersona(in, p, stage, filepath.Join("roster", p.Lname), false, false); err != nil {
+		// memory=false: it travels inside workspace/.Clairvoyance/staff.
+		// includeHistory=true: a whole-workspace package keeps roster transcripts
+		// (Tier-3 scope is unchanged by D19; the history-drop is a Tier-1 rule).
+		if err := stagePersona(in, p, stage, filepath.Join("roster", p.Lname), false, true, false); err != nil {
 			return nil, err
 		}
 		meta.Roster = append(meta.Roster, pkg.RosterEntry{ID: p.ID, Name: p.Name, Lname: p.Lname, Template: p.Template})

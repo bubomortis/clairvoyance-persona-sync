@@ -62,7 +62,14 @@ func newMeta(tier int) pkg.Meta {
 
 // stagePersona lays a persona's Tier-1(+2) contents into stageRoot under subdir
 // ("" for a standalone persona, or "roster/<lname>" inside a workspace package).
-func stagePersona(in *clv.Instance, p *clv.Persona, stageRoot, subdir string, includeMemory, tier2 bool) error {
+//
+// includeHistory carries the raw agent-history transcript. It is DELIBERATELY OFF for
+// a standalone Tier-1 persona (D19): a lone transcript file is the trap that lost the
+// test persona's memory — it is clobbered by the destination's first fresh chat and is
+// unusable without a resumable session anyway. The transcript travels only at Tier 2
+// (as part of Universal Resume) and inside a whole-workspace package (Tier 3, scope
+// unchanged). Tier-1 continuity rides on the curated .clairvoyance/staff memory instead.
+func stagePersona(in *clv.Instance, p *clv.Persona, stageRoot, subdir string, includeMemory, includeHistory, tier2 bool) error {
 	base := filepath.Join(stageRoot, subdir)
 	if err := os.WriteFile(mustDir(filepath.Join(base, "definition", "staff-entry.json")), p.Entry, 0o644); err != nil {
 		return err
@@ -83,7 +90,7 @@ func stagePersona(in *clv.Instance, p *clv.Persona, stageRoot, subdir string, in
 			}
 		}
 	}
-	if p.History != "" {
+	if includeHistory && p.History != "" {
 		if err := pkg.CopyFile(p.History, filepath.Join(base, "history", p.ID+".json")); err != nil {
 			return err
 		}
@@ -127,7 +134,9 @@ func Persona(in *clv.Instance, p *clv.Persona, outPath string, opts Options) (*R
 	}
 	defer os.RemoveAll(stage)
 
-	if err := stagePersona(in, p, stage, "", true, opts.Tier >= 2); err != nil {
+	// Tier 1: definition + template + curated memory only (history dropped, D19).
+	// Tier 2: also the transcript + resume records (Universal Resume).
+	if err := stagePersona(in, p, stage, "", true, opts.Tier >= 2, opts.Tier >= 2); err != nil {
 		return nil, err
 	}
 	meta := newMeta(1)

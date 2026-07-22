@@ -85,7 +85,7 @@ func writeJSONFile(t *testing.T, path string, v any) {
 }
 
 func TestRoundtrip_Tier2_UniversalResume(t *testing.T) {
-	srcDir, _, _, _ := buildSource(t)
+	srcDir, _, _, wantHist := buildSource(t)
 	src, _ := clv.Open(srcDir)
 	p, err := src.FindPersona("Testy")
 	if err != nil {
@@ -140,6 +140,8 @@ func TestRoundtrip_Tier2_UniversalResume(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dstDir, "profiles", "prof2", "resume-exclusions.json")); err != nil {
 		t.Fatalf("resume-exclusions not merged")
 	}
+	// D19: the raw transcript DOES travel at Tier 2 (it is what Universal Resume replays).
+	assertFile(t, filepath.Join(dstDir, "profiles", "prof2", "agent-history", staffID+".json"), wantHist)
 }
 
 func readJSON(t *testing.T, path string, v any) {
@@ -154,7 +156,7 @@ func readJSON(t *testing.T, path string, v any) {
 }
 
 func TestRoundtrip_EncryptedSigned(t *testing.T) {
-	srcDir, wantHome, wantWS, wantHist := buildSource(t)
+	srcDir, wantHome, wantWS, _ := buildSource(t) // wantHist unused: Tier 1 drops history (D19)
 
 	src, err := clv.Open(srcDir)
 	if err != nil {
@@ -214,8 +216,12 @@ func TestRoundtrip_EncryptedSigned(t *testing.T) {
 	assertFile(t, filepath.Join(dstDir, ".Clairvoyance", "staff", "testy", "index.md"), wantHome)
 	// assert workspace memory REMAPPED to the target workspace path
 	assertFile(t, filepath.Join(dstWS, ".Clairvoyance", "staff", "testy", "notes.md"), wantWS)
-	// assert history
-	assertFile(t, filepath.Join(dstDir, "profiles", "prof2", "agent-history", staffID+".json"), wantHist)
+	// D19: a Tier-1 package does NOT carry the raw transcript, so nothing is written
+	// to agent-history on import (the destination keeps whatever it already had — here,
+	// none). History travels at Tier 2 (see TestRoundtrip_Tier2_UniversalResume).
+	if _, err := os.Stat(filepath.Join(dstDir, "profiles", "prof2", "agent-history", staffID+".json")); !os.IsNotExist(err) {
+		t.Fatalf("Tier-1 import should not place a transcript, but agent-history exists (err=%v)", err)
+	}
 	// assert template
 	if _, err := os.Stat(filepath.Join(dstDir, "neurons", "personas", "Custom.md")); err != nil {
 		t.Fatalf("custom template not placed: %v", err)
