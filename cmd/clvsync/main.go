@@ -252,6 +252,7 @@ func cmdExport(args []string) error {
 	allowSecrets := fs.Bool("allow-secrets", false, "override the secret-scan block")
 	allowOperator := fs.Bool("allow-operator-sync", false, "override the S15 guard against exporting the Sync Operator")
 	includeHeavy := fs.Bool("include-heavy", false, "workspace: also emit the Tier 4 heavy add-on (space-gated)")
+	plaintext := fs.Bool("plaintext", false, "export UNENCRYPTED (explicit opt-in; no passphrase/recipient). Anyone who gets the file can read it.")
 	dataDir := fs.String("data-dir", "", "override Clairvoyance data dir")
 	fs.Parse(args)
 	if *persona == "" && *workspace == "" {
@@ -262,6 +263,26 @@ func cmdExport(args []string) error {
 		return err
 	}
 	opts := export.Options{Tier: *tier, Recipient: *recipient, AllowSecrets: *allowSecrets, AllowOperatorSync: *allowOperator, Passphrase: os.Getenv("CLVSYNC_PASSPHRASE")}
+
+	// D8 / §20.2: never silently ship a plaintext package. With no passphrase and no
+	// recipient, plaintext requires the explicit --plaintext opt-in; an interactive
+	// terminal is prompted; a non-interactive caller is refused with guidance.
+	switch resolveExportEncryption(opts.Passphrase, opts.Recipient, *plaintext, stdinIsTerminal()) {
+	case encPlaintext:
+		fmt.Fprintln(os.Stderr, "⚠ --plaintext: exporting UNENCRYPTED — anyone who obtains this file can read the persona's memory and history. Move it only over a trusted channel.")
+	case encPrompt:
+		pass, perr := readNewPassphrase()
+		if perr != nil {
+			return perr
+		}
+		if pass == "" {
+			return fmt.Errorf("no passphrase entered — re-run with --recipient <key> to encrypt to a key, or --plaintext to export unencrypted")
+		}
+		opts.Passphrase = pass
+	case encRefuse:
+		return fmt.Errorf("refusing to export UNENCRYPTED: set CLVSYNC_PASSPHRASE, pass --recipient <key>, or explicitly --plaintext")
+	}
+
 	if *signKey != "" {
 		priv, err := loadPrivateKey(*signKey)
 		if err != nil {
@@ -560,7 +581,11 @@ func interactiveImport(dataDir string) error {
 	}
 	pass := os.Getenv("CLVSYNC_PASSPHRASE")
 	if pass == "" {
-		pass = ask("Passphrase (blank if the package is not encrypted): ")
+		p, perr := readPassphrase("Passphrase (blank if the package is not encrypted): ")
+		if perr != nil {
+			return perr
+		}
+		pass = p
 	}
 	mode := ask("Mode [sync]/overwrite/skip: ")
 	m, err := clv.ParseMode(mode)

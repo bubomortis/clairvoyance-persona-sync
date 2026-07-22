@@ -5,7 +5,8 @@ go 1.26
 require (
 	aead.dev/minisign v0.3.0
 	filippo.io/age v1.3.1
-	golang.org/x/sys v0.38.0
+	golang.org/x/sys v0.47.0
+	golang.org/x/term v0.45.0
 )
 
 require (

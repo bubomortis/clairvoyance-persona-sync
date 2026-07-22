@@ -99,6 +99,11 @@ Staff steps:
    `clvsync export --persona "<name>" --tier 2 --out-dir "<folder>"`
    — `clvsync` auto-names the file and **remembers the folder** for next time. (Omit `--out-dir` to
    reuse the remembered folder; use `--out <full-path>` for a one-off exact filename.)
+   - **Export never silently produces a plaintext package.** With no `CLVSYNC_PASSPHRASE` and no
+     `--recipient`, a non-interactive run (which is you, the operator) is **refused** — set the
+     passphrase (or a `--recipient` key), or pass `--plaintext` only if the user deliberately wants an
+     unencrypted package. Do **not** collect the passphrase in chat; source it from Settings →
+     Credentials or a `--recipient` public key.
 3. Hand the user the resulting `.cvpkg.age` file and remind them to send the **passphrase out of
    band** (not with the file).
 

@@ -7,7 +7,19 @@ All notable changes to `clvsync` are documented here. Format loosely follows
 
 _Nothing yet._
 
-## [0.2.0] - 2026-07-21
+## [0.2.1] - 2026-07-21
+
+### Security
+- **`export` never silently ships a plaintext package (D8 / spec §20.2).** Previously, with no
+  `CLVSYNC_PASSPHRASE` and no `--recipient`, `export` produced an *unencrypted* `.cvpkg` with no
+  prompt or warning — so a persona's memory and history could leave the machine in the clear
+  unnoticed. Now export **fails closed**: an interactive terminal is **prompted** for a passphrase
+  (entered twice to confirm, no-echo), a non-interactive caller is **refused** with guidance, and the
+  only way to get an unencrypted package is the explicit new **`--plaintext`** flag (which prints a
+  warning). The interactive `import` passphrase prompt is also now no-echo.
+
+### Added
+- **`clvsync export --plaintext`** — explicit opt-in to write an unencrypted package.
 
 ### Added
 - **In-place self-update.** New commands: `clvsync status` (version, data dir, Sync Operator

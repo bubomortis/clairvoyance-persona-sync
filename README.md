@@ -22,7 +22,7 @@ Tier 4 is written **after** Tier 3 is complete and verified, and is **skipped (n
 Because a package **leaves the machine**, the design treats it as sensitive in transit and untrusted on arrival:
 
 - **Secret scrub (S1):** exports are scanned for API keys / tokens / private keys and **blocked by default**; credential stores are never included.
-- **Encryption (`age`):** optional ChaCha20-Poly1305, passphrase or recipient-public-key mode. *(Not AES — chosen for clean key handling; see the spec.)*
+- **Encryption (`age`):** ChaCha20-Poly1305, passphrase or recipient-public-key mode. Export **never silently ships plaintext** — with no passphrase/recipient it prompts (interactive) or refuses (non-interactive); unencrypted output requires the explicit `--plaintext` opt-in. *(Not AES — chosen for clean key handling; see the spec.)*
 - **Authenticity (`minisign`):** detached signature over the package + manifest, verified before anything is unpacked.
 - **Safe import (S3):** every path is validated against allowed roots — zip-slip / traversal / UNC / drive-letter escapes rejected.
 - **Integrity (S8):** per-file SHA-256 manifest, verified on import.
