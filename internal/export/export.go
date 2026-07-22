@@ -25,12 +25,13 @@ import (
 
 // Options controls tier, encryption, signing, and the secret-scan gate.
 type Options struct {
-	Tier              int
-	Passphrase        string
-	Recipient         string
-	SignKey           *minisign.PrivateKey
-	AllowSecrets      bool
-	AllowOperatorSync bool // override the S15 export guard (§19.3)
+	Tier               int
+	Passphrase         string
+	Recipient          string
+	SignKey            *minisign.PrivateKey
+	AllowSecrets       bool
+	AllowOperatorSync  bool // override the S15 export guard (§19.3)
+	IncludeAgentMemory bool // D19: also bundle the rich .claude/projects/<munge>/memory store
 }
 
 // Result reports the produced artifacts and any secret findings.
@@ -123,6 +124,27 @@ func mustDir(file string) string {
 	return file
 }
 
+// stageAgentMemory copies the persona's rich .claude/projects/<munge>/memory store into
+// <stageRoot>/<subdir>/agent-memory. The munge is derived from the persona's shell.cwd
+// (falling back to the home data dir). Returns false with no error when the store does not
+// exist on this machine (nothing to travel — not a failure).
+func stageAgentMemory(in *clv.Instance, p *clv.Persona, stageRoot, subdir string) (bool, error) {
+	cwd := clv.EntryShellCwd(p.Entry)
+	if cwd == "" {
+		cwd = in.DataDir
+	}
+	dir := clv.AgentMemoryDir(in.AgentHome, cwd)
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		return false, nil
+	}
+	dst := filepath.Join(stageRoot, subdir, "agent-memory")
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		return false, err
+	}
+	return true, os.CopyFS(dst, os.DirFS(dir))
+}
+
 // Persona exports one persona (Tier 1, or Tier 2 with resume artifacts).
 func Persona(in *clv.Instance, p *clv.Persona, outPath string, opts Options) (*Result, error) {
 	if p.IsOperator() && !opts.AllowOperatorSync {
@@ -143,6 +165,15 @@ func Persona(in *clv.Instance, p *clv.Persona, outPath string, opts Options) (*R
 	meta.PersonaID, meta.PersonaName, meta.Template = p.ID, p.Name, p.Template
 	for _, m := range p.Memory {
 		meta.Scopes = append(meta.Scopes, m.Scope)
+	}
+	// D19 --include-agent-memory: bundle the rich .claude/projects working store (orthogonal
+	// to tier). Staged under the stage root, so the finalize secret scan (S1) covers it.
+	if opts.IncludeAgentMemory {
+		staged, err := stageAgentMemory(in, p, stage, "")
+		if err != nil {
+			return nil, err
+		}
+		meta.AgentMemory = staged
 	}
 	if opts.Tier >= 2 {
 		if _, err := os.Stat(filepath.Join(stage, "resume")); err == nil {

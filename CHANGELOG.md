@@ -5,7 +5,14 @@ All notable changes to `clvsync` are documented here. Format loosely follows
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- **`clvsync export --include-agent-memory` (D19).** Opt-in to also bundle the persona's rich
+  Claude Code working memory — the `~/.claude/projects/<munge>/memory` store, keyed by the
+  workspace cwd — on top of the curated `.clairvoyance/staff` memory that always travels. It is
+  secret-scanned like all staged content (the `.claude` store is exactly where a stray API key
+  tends to live), and on import it is **remapped to the target machine's own home and cwd munge**
+  (following the same `shell.cwd` repoint as the rest of the import), placed non-destructively with
+  a `.clvsync-bak` on any overwrite. Without the flag, the store does not travel at all.
 
 ## [0.2.2] - 2026-07-21
 

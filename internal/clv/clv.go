@@ -25,11 +25,15 @@ type store struct {
 type Instance struct {
 	DataDir    string
 	Workspaces []Workspace
+	// AgentHome is the user home under which the rich .claude/projects agent-memory
+	// store lives (defaults to the OS user home; overridable for tests).
+	AgentHome string
 }
 
 // Open loads the workspace registry for a data dir.
 func Open(dataDir string) (*Instance, error) {
 	in := &Instance{DataDir: dataDir}
+	in.AgentHome, _ = os.UserHomeDir()
 	if b, err := os.ReadFile(filepath.Join(dataDir, "clairvoyance-store.json")); err == nil {
 		var s store
 		if err := json.Unmarshal(b, &s); err == nil {

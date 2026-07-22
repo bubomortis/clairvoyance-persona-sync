@@ -251,6 +251,7 @@ func cmdExport(args []string) error {
 	allowSecrets := fs.Bool("allow-secrets", false, "override the secret-scan block")
 	allowOperator := fs.Bool("allow-operator-sync", false, "override the S15 guard against exporting the Sync Operator")
 	includeHeavy := fs.Bool("include-heavy", false, "workspace: also emit the Tier 4 heavy add-on (space-gated)")
+	includeAgentMem := fs.Bool("include-agent-memory", false, "also bundle the rich .claude/projects working memory (secret-scanned; remapped on import)")
 	plaintext := fs.Bool("plaintext", false, "export UNENCRYPTED (explicit opt-in; no passphrase/recipient). Anyone who gets the file can read it.")
 	dataDir := fs.String("data-dir", "", "override Clairvoyance data dir")
 	fs.Parse(args)
@@ -261,7 +262,7 @@ func cmdExport(args []string) error {
 	if err != nil {
 		return err
 	}
-	opts := export.Options{Tier: *tier, Recipient: *recipient, AllowSecrets: *allowSecrets, AllowOperatorSync: *allowOperator, Passphrase: os.Getenv("CLVSYNC_PASSPHRASE")}
+	opts := export.Options{Tier: *tier, Recipient: *recipient, AllowSecrets: *allowSecrets, AllowOperatorSync: *allowOperator, IncludeAgentMemory: *includeAgentMem, Passphrase: os.Getenv("CLVSYNC_PASSPHRASE")}
 
 	// D8 / §20.2: never silently ship a plaintext package. With no passphrase and no
 	// recipient, plaintext requires the explicit --plaintext opt-in; an interactive

@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -283,7 +284,70 @@ func applyPersona(stage string, meta pkg.Meta, in *clv.Instance, opts Options) (
 	mergeMemory(stage, lname, in, rep, opts)
 	mergeHistory(stage, "", meta.PersonaID, prof, in, rep, opts)
 	mergeResume(stage, "", prof, in, rep, opts)
+	mergeAgentMemory(stage, "", in, rep, opts, agentMemCwd(in, entry, meta.PersonaID, opts.DryRun))
 	return rep, nil
+}
+
+// agentMemCwd resolves the cwd whose munge the rich agent-memory should land under on THIS
+// machine. After a real import the authoritative value is the persona's on-disk shell.cwd
+// (covers sync-preserve, create-repoint, and overwrite); for a dry run we preview against
+// the repointed incoming cwd.
+func agentMemCwd(in *clv.Instance, entry json.RawMessage, id string, dryRun bool) string {
+	cwd := clv.EntryShellCwd(entry)
+	if !dryRun {
+		if fp, err := in.FindPersona(id); err == nil {
+			if c := clv.EntryShellCwd(fp.Entry); c != "" {
+				cwd = c
+			}
+		}
+	}
+	return cwd
+}
+
+// mergeAgentMemory places a package's bundled rich agent-memory (.claude/projects/<munge>/
+// memory) under THIS machine's munge for the resolved cwd (D19). Non-destructive: a
+// differing existing file is backed up (.clvsync-bak) before the incoming copy replaces it;
+// identical files are skipped. Absent bundle → no-op.
+func mergeAgentMemory(stage, subdir string, in *clv.Instance, rep *Report, opts Options, cwd string) {
+	src := filepath.Join(stage, subdir, "agent-memory")
+	if info, err := os.Stat(src); err != nil || !info.IsDir() {
+		return
+	}
+	if cwd == "" {
+		cwd = in.DataDir
+	}
+	dstDir := clv.AgentMemoryDir(in.AgentHome, cwd)
+	rep.plan("agent-memory: place rich working memory → %s", dstDir)
+	if opts.DryRun {
+		return
+	}
+	backedUp := false
+	_ = filepath.WalkDir(src, func(p string, d fs.DirEntry, werr error) error {
+		if werr != nil || d.IsDir() {
+			return werr
+		}
+		rel, err := filepath.Rel(src, p)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dstDir, rel)
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		if old, e := os.ReadFile(target); e == nil {
+			nb, _ := os.ReadFile(p)
+			if string(old) == string(nb) {
+				return nil // identical: skip
+			}
+			_ = os.WriteFile(target+".clvsync-bak", old, 0o644) // S7
+			backedUp = true
+		}
+		return pkg.CopyFile(p, target)
+	})
+	rep.placed("agent-memory", dstDir)
+	if backedUp {
+		rep.BackedUp = append(rep.BackedUp, "agent-memory (.clvsync-bak on overwrite)")
+	}
 }
 
 func applyWorkspace(stage string, meta pkg.Meta, in *clv.Instance, opts Options) (*Report, error) {

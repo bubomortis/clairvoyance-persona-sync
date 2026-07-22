@@ -16,6 +16,7 @@ type Meta struct {
 	PersonaName   string   `json:"personaName,omitempty"`
 	Template      string   `json:"template,omitempty"`
 	Scopes        []string `json:"scopes,omitempty"` // memory scopes present ("home" / workspace names)
+	AgentMemory   bool     `json:"agentMemory,omitempty"` // rich .claude/projects memory bundled (D19 --include-agent-memory)
 	// Tier 3 (workspace):
 	WorkspaceName string         `json:"workspaceName,omitempty"`
 	Roster        []RosterEntry  `json:"roster,omitempty"`
