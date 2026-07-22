@@ -5,7 +5,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"crypto/rand"
 	"flag"
@@ -226,8 +225,8 @@ func cmdUpdate(args []string) error {
 	if !*yes {
 		self, _ := os.Executable()
 		fmt.Printf("download %s and replace %s? [y/N] ", selfupdate.AssetName(), self)
-		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-		if a := strings.ToLower(strings.TrimSpace(line)); a != "y" && a != "yes" {
+		line, _ := readLineRaw()
+		if a := strings.ToLower(line); a != "y" && a != "yes" {
 			fmt.Println("aborted.")
 			return nil
 		}
@@ -569,11 +568,10 @@ func printReport(rep *importer.Report) {
 // interactiveImport walks a non-CLI user through file → passphrase → dry-run preview
 // → confirm → apply (§19 guided wrapper).
 func interactiveImport(dataDir string) error {
-	r := bufio.NewReader(os.Stdin)
 	ask := func(prompt string) string {
 		fmt.Print(prompt)
-		s, _ := r.ReadString('\n')
-		return strings.TrimSpace(s)
+		s, _ := readLineRaw() // no read-ahead, so it interleaves safely with the no-echo passphrase read
+		return s
 	}
 	pkgPath := ask("Package file (.cvpkg / .cvpkg.age): ")
 	if pkgPath == "" {

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"strings"
@@ -40,6 +39,31 @@ func resolveExportEncryption(envPass, recipient string, plaintext, isTTY bool) e
 // stdinIsTerminal reports whether stdin is an interactive terminal.
 func stdinIsTerminal() bool { return term.IsTerminal(int(os.Stdin.Fd())) }
 
+// readLineRaw reads one line from os.Stdin a byte at a time WITHOUT reading ahead, so
+// plain-text prompts can safely interleave with term.ReadPassword on the same fd — a
+// buffered reader could otherwise swallow a following passphrase line (a multi-line
+// paste at an earlier prompt). Trims the trailing CR/LF.
+func readLineRaw() (string, error) {
+	var b []byte
+	var one [1]byte
+	for {
+		n, err := os.Stdin.Read(one[:])
+		if n > 0 {
+			if one[0] == '\n' {
+				break
+			}
+			b = append(b, one[0])
+		}
+		if err != nil {
+			if len(b) == 0 {
+				return "", err
+			}
+			break
+		}
+	}
+	return strings.TrimSpace(string(b)), nil
+}
+
 // readPassphrase prompts (to stderr) and reads a line without echoing on a terminal;
 // on a non-terminal (piped input) it reads a plain line. The prompt goes to stderr so
 // stdout stays clean.
@@ -51,8 +75,7 @@ func readPassphrase(prompt string) (string, error) {
 		fmt.Fprintln(os.Stderr)
 		return strings.TrimSpace(string(b)), err
 	}
-	s, err := bufio.NewReader(os.Stdin).ReadString('\n')
-	return strings.TrimSpace(s), err
+	return readLineRaw()
 }
 
 // readNewPassphrase prompts for a passphrase to ENCRYPT a package: read twice and
