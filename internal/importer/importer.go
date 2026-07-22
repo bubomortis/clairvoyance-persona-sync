@@ -423,6 +423,11 @@ func applyWorkspace(stage string, meta pkg.Meta, in *clv.Instance, opts Options)
 			rep.SkippedScopes = append(rep.SkippedScopes, "persona-exists:"+r.Name)
 			continue
 		}
+		// S4 (SU5): surface unrecognized definition fields on roster members too, not just
+		// the Tier-1/2 lone persona — a workspace import loads every roster definition.
+		if unknown := clv.UnknownDefinitionFields(entry); len(unknown) > 0 {
+			rep.warn("roster %s: imported definition carries unrecognized field(s) %v — review before relying on this Staff member (inert to clvsync, loaded by Clairvoyance)", r.Name, unknown)
+		}
 		entry, repoints := repointDeadPaths(entry, in.DataDir)
 		action, _, _, trustNote, err := in.MergeStaffEntry(prof, entry, r.ID, mode, opts.DryRun)
 		if err != nil {

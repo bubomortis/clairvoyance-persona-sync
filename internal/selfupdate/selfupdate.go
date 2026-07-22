@@ -189,7 +189,15 @@ func replaceSelf(bin []byte) (string, error) {
 		return "", fmt.Errorf("move current executable aside: %w", err)
 	}
 	if err := os.Rename(tmpName, self); err != nil {
-		_ = os.Rename(old, self) // roll back
+		// Roll back: move the original binary back into place. If that ALSO fails, the
+		// current executable is sitting at "<exe>.old" and <exe> is absent — surface an
+		// explicit manual-recovery instruction rather than leaving the user with a broken
+		// install and a generic error.
+		if rbErr := os.Rename(old, self); rbErr != nil {
+			os.Remove(tmpName)
+			return "", fmt.Errorf("install new executable failed (%w) and rollback also failed (%v): "+
+				"your clvsync binary is now at %q — rename it back to %q to recover", err, rbErr, old, self)
+		}
 		os.Remove(tmpName)
 		return "", fmt.Errorf("install new executable: %w", err)
 	}

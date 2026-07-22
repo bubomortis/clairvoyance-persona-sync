@@ -14,8 +14,27 @@ All notable changes to `clvsync` are documented here. Format loosely follows
   rows** (reconciliation still passes) while continuing to verify the persona's own
   definition and its static curated `.clairvoyance/staff` memory **strictly** (a real
   mismatch there still FAILs). A *missing* aggregate is still a failure — the app rewrites
-  it, it does not delete it. The receipt records an `aggregate` flag per file, and the
-  classifier is also applied by path so older receipts benefit too.
+  it, it does not delete it. The receipt records an `aggregate` flag per file for reference,
+  but `verify-import` classifies **purely by path** — so the result is independent of a
+  stale or tampered receipt flag and of classifier drift across versions.
+
+### Security
+- **The unrecognized-definition-field review advisory (S4) now covers workspace roster
+  members (SU5).** Previously only the Tier-1/2 lone persona surfaced a warning for a staff
+  definition carrying fields outside the documented set; a Tier-3 workspace import loads
+  *every* roster definition, so each is now checked and warned about the same way.
+
+### Fixed
+- **A pre-release build is no longer told it is up to date (SU7).** Version comparison now
+  follows SemVer precedence — a pre-release such as `v0.2.5-rc1` sorts *before* the final
+  `v0.2.5` with the same core — so `clvsync status` / `clvsync update` correctly offer the
+  final release to someone on an rc build instead of reporting "up to date". Build metadata
+  (`+…`) still does not affect precedence.
+- **Self-update failure now prints a manual-recovery instruction if rollback also fails
+  (SU6).** In the unlikely case that installing the new binary fails *and* moving the
+  original back into place also fails, `clvsync update` now names exactly where the working
+  binary is (`<exe>.old`) and how to restore it, instead of returning a generic error over a
+  broken install.
 
 ### Added
 - **Hardened app-closed import finisher — `scripts/clvsync-import-runner.ps1` (§23).**
@@ -39,6 +58,11 @@ All notable changes to `clvsync` are documented here. Format loosely follows
   Verified against the live Cloud Sync engine: notes propagate (create → synced with a
   cloudId), and the sealed private identity is outside Cloud Sync's scope, so a pubkey
   note is safe by construction.
+- **README "Layered tiers" table updated for the memory/history model (D19).** The table
+  now states that Tier 1 carries the **curated** memory (not the raw transcript — that rides
+  at Tier 2 as part of Universal Resume), and adds that **memory depth is an orthogonal
+  axis**: the rich agent working store travels only with `export --include-agent-memory`, at
+  any tier, and placed memory takes effect at the persona's next session start.
 
 ## [0.2.4] - 2026-07-22
 

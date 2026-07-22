@@ -11,7 +11,10 @@ func TestCompare(t *testing.T) {
 		{"v0.1.1", "v0.2.0", -1, true},     // older < newer
 		{"v0.2.0", "v0.1.1", 1, true},      // newer > older
 		{"0.1.1", "v0.1.1", 0, true},       // 'v' optional, equal
-		{"v0.2.0-test", "v0.2.0", 0, true}, // pre-release suffix ignored on core
+		{"v0.2.0-rc1", "v0.2.0", -1, true}, // pre-release precedes the final (SU7)
+		{"v0.2.0", "v0.2.0-rc1", 1, true},  // ...and the final is newer than its rc
+		{"v0.2.0-rc1", "v0.2.0-rc1", 0, true}, // same pre-release, equal
+		{"v0.2.5+ci", "v0.2.5", 0, true},   // build metadata does not affect precedence
 		{"v1.0", "v1.0.0", 0, true},        // trailing zeros
 		{"v0.10.0", "v0.9.0", 1, true},     // numeric, not lexical
 		{"dev", "v0.1.1", 0, false},        // un-released build not comparable

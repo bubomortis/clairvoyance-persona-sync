@@ -8,14 +8,18 @@ A Staff member isn't one file — it's a definition (`profiles/{id}/staff.json` 
 
 ## Layered tiers
 
+Tiers are a **scope** axis (how much travels), from one persona up to a whole workspace:
+
 | Tier | Contents | Size |
 | ---- | -------- | ---- |
-| **1 — Portable Persona** | definition + custom template + memory + history (provider-agnostic, always works) | ~8–30 KB |
-| **2 — Full-Sync Persona** | + **Universal Resume** artifacts → resume the thread under *any* model/provider on the target (Clairvoyance ≥ 0.77.0) | + a few KB |
-| **3 — Workspace (lightweight)** | all personas in a workspace + non-ballooning content + shared memory | 100s KB–low MB |
+| **1 — Portable Persona** | definition + custom template + **curated `.clairvoyance/staff` memory** (provider-agnostic, always works). The raw conversation transcript is **not** included — a lone transcript is clobbered by the first fresh chat on the target and needs Tier 2 to be replayable. | ~8–30 KB |
+| **2 — Full-Sync Persona** | + **Universal Resume** artifacts (this is where the conversation/**history** lives) → resume the thread under *any* model/provider on the target (Clairvoyance ≥ 0.77.0) | + a few KB |
+| **3 — Workspace (lightweight)** | all personas in a workspace + non-ballooning content + each roster member's curated memory | 100s KB–low MB |
 | **4 — Workspace Heavy Add-on** | the regenerable/ballooning dirs (venv, models, node_modules, media), a **separate, last, space-gated** package | GB-scale |
 
 Tier 4 is written **after** Tier 3 is complete and verified, and is **skipped (not truncated)** if the target (e.g. a USB drive) lacks room — so a limited destination degrades gracefully to the largest tier that fits.
+
+**Memory depth is a separate, orthogonal axis** — not another tier. By default only the curated `.clairvoyance/staff` memory travels. The rich Claude Code working store (`~/.claude/projects/<workspace>/memory`) travels **only** when you opt in with `export --include-agent-memory`, at *any* tier; on import it is remapped to the target machine's own home and workspace path and secret-scanned like everything else. Newly placed memory takes effect at the persona's **next session start** (Clairvoyance injects Staff knowledge at session start, not continuously) — the app-closed import + relaunch does this for you.
 
 ## Security posture
 

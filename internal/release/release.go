@@ -108,5 +108,30 @@ func Compare(a, b string) (int, bool) {
 			return 1, true
 		}
 	}
+	// Equal numeric core: a pre-release (e.g. 0.2.5-rc1) precedes the final release with
+	// the same core (SemVer §11), so an rc build correctly sees the final as newer and is
+	// offered the update instead of being told "up to date". Build metadata (+...) does
+	// not affect precedence.
+	switch pa, pb := isPrerelease(a), isPrerelease(b); {
+	case pa && !pb:
+		return -1, true
+	case !pa && pb:
+		return 1, true
+	}
 	return 0, true
+}
+
+// isPrerelease reports whether v carries a SemVer pre-release marker (a '-' that is not
+// part of trailing build metadata). "0.2.5-rc1" is a pre-release; "0.2.5" and "0.2.5+ci"
+// are not.
+func isPrerelease(v string) bool {
+	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
+	dash := strings.IndexByte(v, '-')
+	if dash < 0 {
+		return false
+	}
+	if plus := strings.IndexByte(v, '+'); plus >= 0 && dash > plus {
+		return false // the '-' lives inside build metadata, not a pre-release tag
+	}
+	return true
 }
