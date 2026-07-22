@@ -17,6 +17,11 @@ type Meta struct {
 	Template      string   `json:"template,omitempty"`
 	Scopes        []string `json:"scopes,omitempty"` // memory scopes present ("home" / workspace names)
 	AgentMemory   bool     `json:"agentMemory,omitempty"` // rich .claude/projects memory bundled (D19 --include-agent-memory)
+	// D17 Model 2c travel pairing: the sender's PUBLIC key (never a secret) travels
+	// inside the encrypted package so the recipient can trust-on-first-use it for
+	// reply transfers. Empty unless the sender uses identity + travel pairing.
+	SenderName      string `json:"senderName,omitempty"`
+	SenderPublicKey string `json:"senderPublicKey,omitempty"`
 	// Tier 3 (workspace):
 	WorkspaceName string         `json:"workspaceName,omitempty"`
 	Roster        []RosterEntry  `json:"roster,omitempty"`

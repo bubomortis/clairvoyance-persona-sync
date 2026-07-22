@@ -112,6 +112,37 @@ Staff steps:
 3. Hand the user the resulting `.cvpkg.age` file and remind them to send the **passphrase out of
    band** (not with the file).
 
+## 4. Choose the encryption credential model (D17 §20)
+
+> **Prompt to Staff:** "Set up encryption so I can sync between my machines."
+
+Offer the user a choice and store it with `clvsync cred model <name>` on **each** machine.
+Recommend a tier-aware default; the user still decides:
+
+- **`identity` (recommended for syncing your own machines).** A per-machine `age`
+  keypair; the private half is DPAPI-sealed and never leaves the machine — nothing to
+  type on export or import once paired. Set it up **on each machine**:
+  1. `clvsync cred model identity --pairing travel` (or `--pairing cloud-sync` on Plus+).
+  2. `clvsync cred init` — creates + seals this machine's identity; prints its **public** key.
+  3. Exchange **public** keys (never the private key): each machine runs
+     `clvsync cred pair --name <other-machine> --key <age1…>` (or `--in <pairing-doc>` from
+     `cred pubkey --out`). With `--pairing travel`, after the first exchange the sender's
+     public key rides along inside each package and is trusted automatically.
+     With `--pairing cloud-sync` (Plus+), publish this machine's **public** key to a
+     Cloud-Synced note and read the peer's from it — pairing is **eventual**, so poll with a
+     "waiting to sync" message rather than failing once.
+  After that, `clvsync export`/`import` need no passphrase — the model handles it.
+- **`shared-passphrase`** — one passphrase both machines share. On each machine, verify
+  `CLVSYNC_PASSPHRASE` is populated in **Settings → Credentials** (a fresh `credentials` read,
+  not the session-start snapshot); if missing, ask the user to add it there — **the same value
+  as the other machine**, entered in Credentials, **not in chat**.
+- **`per-transfer`** — no stored secret; a fresh passphrase per transfer, sent out of band.
+
+**Hard rules:** the **private** identity never leaves its machine (not to a note, not to
+cloud, not to chat) — only the **public** key is ever shared. Never enter any passphrase in
+chat. A peer whose public key **changed** is refused by `cred pair` — treat that as possible
+impersonation and verify out of band before `cred unpair` + re-pair.
+
 ## Guard rails the agent must respect
 
 - **Never** export or import the **Sync Operator** persona without the explicit

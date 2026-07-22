@@ -34,6 +34,7 @@ const usage = `clvsync — Clairvoyance Persona & Workspace Sync
 Commands:
   export          Export a persona (--persona, Tier 1/2) or workspace (--workspace, Tier 3)
   import          Import a package into this instance (create-or-merge; --dry-run to preview)
+  cred            Manage the encryption credential model (model/identity/pairing; §20)
   verify          Verify a package's signature + integrity (no import)
   verify-import   Reconcile a post-import receipt against live state (§19.2)
   workspace-prep  Register + scaffold a workspace to receive an import (run app-closed)
@@ -76,6 +77,8 @@ func main() {
 		err = cmdExport(os.Args[2:])
 	case "import":
 		err = cmdImport(os.Args[2:])
+	case "cred":
+		err = cmdCred(os.Args[2:])
 	case "workspace-prep":
 		err = cmdWorkspacePrep(os.Args[2:])
 	case "verify":
@@ -264,23 +267,38 @@ func cmdExport(args []string) error {
 	}
 	opts := export.Options{Tier: *tier, Recipient: *recipient, AllowSecrets: *allowSecrets, AllowOperatorSync: *allowOperator, IncludeAgentMemory: *includeAgentMem, Passphrase: os.Getenv("CLVSYNC_PASSPHRASE")}
 
+	// D17 §20: with no explicit encryption directive, consult the configured
+	// credential model (identity → encrypt to paired peers; shared/per-transfer →
+	// passphrase). Explicit --recipient / --plaintext / CLVSYNC_PASSPHRASE win.
+	explicit := opts.Recipient != "" || *plaintext || opts.Passphrase != ""
+	credResolved, cerr := credAssistExport(*dataDir, &opts, explicit)
+	if cerr != nil {
+		return cerr
+	}
+	if credResolved && len(opts.Recipients) > 0 {
+		fmt.Printf("encrypting to %d paired peer(s) (identity credential model)\n", len(opts.Recipients))
+	}
+
 	// D8 / §20.2: never silently ship a plaintext package. With no passphrase and no
 	// recipient, plaintext requires the explicit --plaintext opt-in; an interactive
-	// terminal is prompted; a non-interactive caller is refused with guidance.
-	switch resolveExportEncryption(opts.Passphrase, opts.Recipient, *plaintext, stdinIsTerminal()) {
-	case encPlaintext:
-		fmt.Fprintln(os.Stderr, "⚠ --plaintext: exporting UNENCRYPTED — anyone who obtains this file can read the persona's memory and history. Move it only over a trusted channel.")
-	case encPrompt:
-		pass, perr := readNewPassphrase()
-		if perr != nil {
-			return perr
+	// terminal is prompted; a non-interactive caller is refused with guidance. This
+	// fallback only runs when the credential model did not already resolve encryption.
+	if !credResolved {
+		switch resolveExportEncryption(opts.Passphrase, opts.Recipient, *plaintext, stdinIsTerminal()) {
+		case encPlaintext:
+			fmt.Fprintln(os.Stderr, "⚠ --plaintext: exporting UNENCRYPTED — anyone who obtains this file can read the persona's memory and history. Move it only over a trusted channel.")
+		case encPrompt:
+			pass, perr := readNewPassphrase()
+			if perr != nil {
+				return perr
+			}
+			if pass == "" {
+				return fmt.Errorf("no passphrase entered — re-run with --recipient <key> to encrypt to a key, or --plaintext to export unencrypted")
+			}
+			opts.Passphrase = pass
+		case encRefuse:
+			return fmt.Errorf("refusing to export UNENCRYPTED: set CLVSYNC_PASSPHRASE, choose a credential model ('clvsync cred model …'), pass --recipient <key>, or explicitly --plaintext")
 		}
-		if pass == "" {
-			return fmt.Errorf("no passphrase entered — re-run with --recipient <key> to encrypt to a key, or --plaintext to export unencrypted")
-		}
-		opts.Passphrase = pass
-	case encRefuse:
-		return fmt.Errorf("refusing to export UNENCRYPTED: set CLVSYNC_PASSPHRASE, pass --recipient <key>, or explicitly --plaintext")
 	}
 
 	if *signKey != "" {
@@ -310,7 +328,7 @@ func cmdExport(args []string) error {
 		}
 		base = strings.ReplaceAll(strings.TrimSpace(base), " ", "-")
 		ext := ".cvpkg"
-		if opts.Passphrase != "" || opts.Recipient != "" {
+		if opts.Passphrase != "" || opts.Recipient != "" || len(opts.Recipients) > 0 {
 			ext += ".age"
 		}
 		outPath = filepath.Join(dir, base+ext)
@@ -533,11 +551,16 @@ func cmdImport(args []string) error {
 			return err
 		}
 	}
+	// D17 §20: if the user gave no --identity / CLVSYNC_PASSPHRASE, fill decryption
+	// from the configured credential model (identity → local sealed key).
+	credMgr := credAssistDecrypt(*dataDir, &opts)
 	rep, err := importer.Apply(*in, inst, opts)
 	if err != nil {
 		return err
 	}
 	printReport(rep)
+	// Trust-on-first-use record of a traveling sender key (identity model only).
+	recordSenderTOFU(credMgr, rep)
 	return nil
 }
 
@@ -583,8 +606,18 @@ func interactiveImport(dataDir string) error {
 	if pkgPath == "" {
 		return fmt.Errorf("no package given")
 	}
+	// D17 §20: consult the credential model first — the identity model decrypts
+	// with this machine's sealed key, so there's nothing to type.
+	credMgr, _ := openCredManager(dataDir)
 	pass := os.Getenv("CLVSYNC_PASSPHRASE")
-	if pass == "" {
+	var identity string
+	if credMgr != nil && pass == "" {
+		if plan, perr := credMgr.ResolveDecrypt(""); perr == nil && plan.Identity != "" {
+			identity = plan.Identity
+			fmt.Println("using this machine's identity key (identity credential model) to decrypt.")
+		}
+	}
+	if pass == "" && identity == "" {
 		p, perr := readPassphrase("Passphrase (blank if the package is not encrypted): ")
 		if perr != nil {
 			return perr
@@ -600,7 +633,7 @@ func interactiveImport(dataDir string) error {
 	if err != nil {
 		return err
 	}
-	base := importer.Options{Mode: m, Passphrase: pass}
+	base := importer.Options{Mode: m, Passphrase: pass, Identity: identity}
 
 	// Always preview first.
 	preview := base
@@ -625,6 +658,7 @@ func interactiveImport(dataDir string) error {
 		return err
 	}
 	printReport(rep)
+	recordSenderTOFU(credMgr, rep)
 	return nil
 }
 

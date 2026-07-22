@@ -69,6 +69,11 @@ type Report struct {
 	MemoryPlaced     bool // curated and/or agent memory was placed → surfaces only on next session start (Q1/§21.5)
 	ReviewNote       string
 	ReceiptPath      string
+	// D17 Model 2c travel pairing: the sender's public key carried in the package
+	// (public, not a secret). The CLI trust-on-first-use records it after a
+	// successful import. Empty unless the sender used identity + travel pairing.
+	SenderName       string
+	SenderPublicKey  string
 
 	files []string // absolute placed paths to hash into the receipt
 }
@@ -108,6 +113,8 @@ func Apply(pkgPath string, in *clv.Instance, opts Options) (*Report, error) {
 	}
 	rep.Mode = string(opts.mode())
 	rep.DryRun = opts.DryRun
+	rep.SenderName = meta.SenderName
+	rep.SenderPublicKey = meta.SenderPublicKey
 	if !opts.DryRun {
 		if err := writeReceipt(rep, in, opts); err != nil {
 			rep.warn("could not write import receipt: %v", err)

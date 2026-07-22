@@ -5,7 +5,39 @@ All notable changes to `clvsync` are documented here. Format loosely follows
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- **Credential model — the full three-model encryption selector (D17 Phase 2, §20).**
+  A new `clvsync cred` command family lets you choose, per machine, how packages are
+  encrypted, and export/import then apply it automatically (explicit
+  `--recipient` / `--plaintext` / `CLVSYNC_PASSPHRASE` still override):
+  - **`shared-passphrase` (2a)** — the same passphrase on both machines
+    (`CLVSYNC_PASSPHRASE` in Settings → Credentials, never chat); one secret guards
+    every transfer.
+  - **`per-transfer` (2b)** — a fresh passphrase chosen per export and entered per
+    import; nothing stored.
+  - **`identity` (2c)** — a per-machine **`age` keypair**. Encrypt to a peer's
+    **public** key; decrypt with the local **private** key, which is **sealed at rest
+    with Windows DPAPI** (per-user) and **never leaves the machine**. Most transparent
+    after a one-time pairing.
+
+  Commands: `cred status`, `cred model <name> [--pairing cloud-sync|travel]`,
+  `cred init` (generate + seal this machine's identity), `cred pubkey [--out <file>]`
+  (print / write a public-key-only pairing doc), `cred pair --name … --key … | --in <doc>`
+  (trust a peer, **trust-on-first-use** — a changed key for a known name is refused,
+  not silently overwritten), `cred peers`, `cred unpair`.
+- **Trust-on-first-use pairing that travels (2c travel pairing).** With
+  `--pairing travel`, every package carries the sender's **public** key (never a
+  secret); on import the recipient records it automatically, so replies can be
+  encrypted back without a separate exchange. `--pairing cloud-sync` (Plus+) is the
+  operator-driven alternative that exchanges public keys through a Cloud-Synced note.
+- **Export can encrypt to multiple recipients at once** (`age` multi-recipient), so an
+  identity-model package can be decryptable by every paired peer.
+
+### Notes
+- The extractable core lives in `internal/cred` (depends only on `filippo.io/age` +
+  the standard library — no clvsync-specific imports), with OS-specific sealing
+  injected via `internal/dpapi`. It is deliberately structured to be liftable into a
+  standalone credential-broker module later.
 
 ## [0.2.3] - 2026-07-22
 

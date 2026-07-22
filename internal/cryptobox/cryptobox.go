@@ -6,6 +6,7 @@ package cryptobox
 
 import (
 	"crypto/rand"
+	"fmt"
 	"io"
 
 	"aead.dev/minisign"
@@ -39,11 +40,25 @@ func DecryptPassphrase(src io.Reader, passphrase string) (io.Reader, error) {
 
 // EncryptRecipient encrypts src to dst for an age X25519 public key ("age1...").
 func EncryptRecipient(dst io.Writer, src io.Reader, recipient string) error {
-	r, err := age.ParseX25519Recipient(recipient)
-	if err != nil {
-		return err
+	return EncryptRecipients(dst, src, []string{recipient})
+}
+
+// EncryptRecipients encrypts src to dst for one or more age X25519 public keys —
+// any listed recipient can decrypt with its own private key. Used by the D17
+// identity model (Model 2c) to encrypt a package to every paired peer at once.
+func EncryptRecipients(dst io.Writer, src io.Reader, recipients []string) error {
+	if len(recipients) == 0 {
+		return fmt.Errorf("no recipients")
 	}
-	w, err := age.Encrypt(dst, r)
+	rs := make([]age.Recipient, 0, len(recipients))
+	for _, s := range recipients {
+		r, err := age.ParseX25519Recipient(s)
+		if err != nil {
+			return err
+		}
+		rs = append(rs, r)
+	}
+	w, err := age.Encrypt(dst, rs...)
 	if err != nil {
 		return err
 	}

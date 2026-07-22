@@ -27,11 +27,25 @@ import (
 type Options struct {
 	Tier               int
 	Passphrase         string
-	Recipient          string
+	Recipient          string   // single age recipient (legacy / --recipient)
+	Recipients         []string // D17 Model 2c: encrypt to every paired peer at once
 	SignKey            *minisign.PrivateKey
 	AllowSecrets       bool
 	AllowOperatorSync  bool // override the S15 export guard (§19.3)
 	IncludeAgentMemory bool // D19: also bundle the rich .claude/projects/<munge>/memory store
+	// D17 Model 2c travel pairing: sender public key (+ advertised name) to embed
+	// in meta so the recipient can trust-on-first-use it. Public data, not a secret.
+	SenderName      string
+	SenderPublicKey string
+}
+
+// recipients returns the combined recipient set (single Recipient folded in).
+func (o Options) recipients() []string {
+	rs := o.Recipients
+	if o.Recipient != "" {
+		rs = append([]string{o.Recipient}, rs...)
+	}
+	return rs
 }
 
 // Result reports the produced artifacts and any secret findings.
@@ -188,6 +202,11 @@ func Persona(in *clv.Instance, p *clv.Persona, outPath string, opts Options) (*R
 
 // finalize runs the shared packaging tail for any staged tree.
 func finalize(stage, outPath string, meta pkg.Meta, opts Options) (*Result, error) {
+	// D17 travel pairing: stamp the sender's public key into meta (public, not a
+	// secret) so the recipient can trust-on-first-use it. Done here so it lands in
+	// meta.json before the manifest + secret scan cover the staged tree.
+	meta.SenderName = opts.SenderName
+	meta.SenderPublicKey = opts.SenderPublicKey
 	mb, _ := json.MarshalIndent(meta, "", "  ")
 	if err := os.WriteFile(filepath.Join(stage, "meta.json"), mb, 0o644); err != nil {
 		return nil, err
@@ -238,12 +257,13 @@ func finalize(stage, outPath string, meta pkg.Meta, opts Options) (*Result, erro
 		return nil, err
 	}
 	res := &Result{PackagePath: outPath, SecretHits: hits, SecretSkips: skips}
+	recips := opts.recipients()
 	switch {
 	case opts.Passphrase != "":
 		err = cryptobox.EncryptPassphrase(out, bytes.NewReader(tarbuf.Bytes()), opts.Passphrase)
 		res.Encrypted = true
-	case opts.Recipient != "":
-		err = cryptobox.EncryptRecipient(out, bytes.NewReader(tarbuf.Bytes()), opts.Recipient)
+	case len(recips) > 0:
+		err = cryptobox.EncryptRecipients(out, bytes.NewReader(tarbuf.Bytes()), recips)
 		res.Encrypted = true
 	default:
 		_, err = out.Write(tarbuf.Bytes())
