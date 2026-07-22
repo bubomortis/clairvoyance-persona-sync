@@ -5,6 +5,8 @@ All notable changes to `clvsync` are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-07-22
+
 ### Changed
 - **`verify-import` no longer fails on app-owned aggregate files (§23.4).** After an
   app-closed import and restart, Clairvoyance rewrites its own aggregate files — the profile
