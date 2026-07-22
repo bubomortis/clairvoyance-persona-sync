@@ -5,6 +5,14 @@ All notable changes to `clvsync` are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- **`verify-import`'s app-owned-aggregate exemption is now scoped to the profile store.**
+  The §23.4 classifier previously matched any file merely *named* `staff.json`, or any file
+  inside any directory named `agent-history`, anywhere on disk. It now requires the real
+  path shapes — `profiles/<prof>/staff.json` and `profiles/<prof>/agent-history/<id>.json` —
+  so a curated memory file contrived to share one of those names is still verified strictly
+  instead of receiving the lenient advisory `NOTE`.
+
 ## [0.2.5] - 2026-07-22
 
 ### Changed

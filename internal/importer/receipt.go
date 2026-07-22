@@ -32,11 +32,21 @@ type FileRef struct {
 // its mismatch as an advisory rather than a failure (§23.4). The persona's own definition
 // presence and its curated `.clairvoyance/staff` memory are static and verified strictly.
 func IsAppOwnedAggregate(p string) bool {
+	// Both aggregates live inside the profile store, at fixed path shapes:
+	//   profiles/<prof>/staff.json
+	//   profiles/<prof>/agent-history/<id>.json
+	// Anchor on the fixed `profiles` / `agent-history` segments so a curated file merely
+	// *named* staff.json (or sitting under some unrelated agent-history dir) elsewhere on
+	// disk is still verified strictly, not handed the lenient advisory exemption.
+	dir := filepath.Dir(p)
 	if filepath.Base(p) == "staff.json" {
-		return true
+		return filepath.Base(filepath.Dir(dir)) == "profiles"
 	}
 	// agent-history/<id>.json — the per-persona transcript store the app re-flushes.
-	return filepath.Base(filepath.Dir(p)) == "agent-history"
+	if filepath.Base(dir) == "agent-history" {
+		return filepath.Base(filepath.Dir(filepath.Dir(dir))) == "profiles"
+	}
+	return false
 }
 
 // Receipt is the durable record of one import, written by the finisher and read

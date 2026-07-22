@@ -18,6 +18,12 @@ func TestIsAppOwnedAggregate(t *testing.T) {
 		filepath.Join("d", ".clairvoyance", "staff", "reegor", "current-context.md"): false,
 		filepath.Join("d", "profiles", "p", "staff-names.json"):                      false,
 		filepath.Join("d", "neurons", "personas", "Sync Operator.md"):                false,
+		// Profile-scoping (Jypsen Low-1): a file merely NAMED staff.json, or an
+		// agent-history dir, that is NOT under profiles/<prof>/ must be verified strictly.
+		filepath.Join("d", ".clairvoyance", "staff", "reegor", "staff.json"): false, // contrived name outside profiles/
+		filepath.Join("d", "some", "agent-history", "x.json"):                false, // agent-history not under profiles/
+		filepath.Join("staff.json"):                                          false, // bare, no profile dir
+		filepath.Join("d", "profiles", "staff.json"):                         false, // directly under profiles/, no <prof> level
 	}
 	for p, want := range cases {
 		if got := IsAppOwnedAggregate(p); got != want {
