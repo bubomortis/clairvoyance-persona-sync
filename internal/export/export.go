@@ -133,7 +133,10 @@ func stageAgentMemory(in *clv.Instance, p *clv.Persona, stageRoot, subdir string
 	if cwd == "" {
 		cwd = in.DataDir
 	}
-	dir := clv.AgentMemoryDir(in.AgentHome, cwd)
+	dir, ok := clv.AgentMemoryDir(in.AgentHome, cwd)
+	if !ok {
+		return false, nil // degenerate cwd → can't locate a store (AM-1 guard)
+	}
 	info, err := os.Stat(dir)
 	if err != nil || !info.IsDir() {
 		return false, nil

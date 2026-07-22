@@ -12,7 +12,9 @@ All notable changes to `clvsync` are documented here. Format loosely follows
   secret-scanned like all staged content (the `.claude` store is exactly where a stray API key
   tends to live), and on import it is **remapped to the target machine's own home and cwd munge**
   (following the same `shell.cwd` repoint as the rest of the import), placed non-destructively with
-  a `.clvsync-bak` on any overwrite. Without the flag, the store does not travel at all.
+  a `.clvsync-bak` on any overwrite. Without the flag, the store does not travel at all. The
+  target path is contained under `<home>/.claude/projects` — a degenerate persona cwd is refused
+  rather than allowed to place memory outside that sandbox.
 
 ## [0.2.2] - 2026-07-21
 

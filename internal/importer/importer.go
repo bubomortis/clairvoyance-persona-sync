@@ -316,13 +316,19 @@ func mergeAgentMemory(stage, subdir string, in *clv.Instance, rep *Report, opts 
 	if cwd == "" {
 		cwd = in.DataDir
 	}
-	dstDir := clv.AgentMemoryDir(in.AgentHome, cwd)
+	dstDir, ok := clv.AgentMemoryDir(in.AgentHome, cwd)
+	if !ok {
+		// AM-1: a degenerate cwd ("."/"..") would collapse the target out of
+		// .claude/projects — refuse to place rather than write outside the sandbox.
+		rep.warn("agent-memory: refusing to place — persona cwd %q resolves outside the agent-memory sandbox", cwd)
+		return
+	}
 	rep.plan("agent-memory: place rich working memory → %s", dstDir)
 	if opts.DryRun {
 		return
 	}
 	backedUp := false
-	_ = filepath.WalkDir(src, func(p string, d fs.DirEntry, werr error) error {
+	if err := filepath.WalkDir(src, func(p string, d fs.DirEntry, werr error) error {
 		if werr != nil || d.IsDir() {
 			return werr
 		}
@@ -343,7 +349,11 @@ func mergeAgentMemory(stage, subdir string, in *clv.Instance, rep *Report, opts 
 			backedUp = true
 		}
 		return pkg.CopyFile(p, target)
-	})
+	}); err != nil {
+		// AM-2: don't silently report a partial placement as done.
+		rep.warn("agent-memory: partial placement into %s — %v", dstDir, err)
+		return
+	}
 	rep.placed("agent-memory", dstDir)
 	if backedUp {
 		rep.BackedUp = append(rep.BackedUp, "agent-memory (.clvsync-bak on overwrite)")

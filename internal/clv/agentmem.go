@@ -23,9 +23,22 @@ func AgentMemoryMunge(cwd string) string {
 }
 
 // AgentMemoryDir returns the rich agent working-memory directory for a workspace cwd under
-// a given user home: <home>/.claude/projects/<munge>/memory.
-func AgentMemoryDir(home, cwd string) string {
-	return filepath.Join(home, ".claude", "projects", AgentMemoryMunge(cwd), "memory")
+// a given user home: <home>/.claude/projects/<munge>/memory, and ok=false when the cwd is
+// degenerate. A munge of "." or ".." has no separators to neutralize and would collapse the
+// path out of projects/<munge> (e.g. cwd ".." → <home>/.claude/memory, AM-1); such a cwd is
+// rejected, and as belt-and-suspenders the resolved dir is asserted to stay under
+// <home>/.claude/projects so no future munge quirk can escape.
+func AgentMemoryDir(home, cwd string) (string, bool) {
+	m := AgentMemoryMunge(cwd)
+	if m == "" || m == "." || m == ".." {
+		return "", false
+	}
+	base := filepath.Join(home, ".claude", "projects")
+	dir := filepath.Join(base, m, "memory")
+	if dir != base && !strings.HasPrefix(dir, base+string(filepath.Separator)) {
+		return "", false
+	}
+	return dir, true
 }
 
 // EntryShellCwd extracts shell.cwd from a staff entry, or "" if absent/unparseable.
