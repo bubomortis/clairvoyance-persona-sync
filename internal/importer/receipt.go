@@ -181,7 +181,10 @@ func VerifyReceipt(r *Receipt, in *clv.Instance) *VerifyResult {
 	// mismatch is expected, not corruption. A *missing* aggregate is still a failure (the
 	// app rewrites it, it does not delete it), as is any mismatch on a static file.
 	for _, f := range r.Files {
-		agg := f.Aggregate || IsAppOwnedAggregate(f.Path)
+		// Classify purely by path at verify time — independent of the receipt's stored
+		// `aggregate` flag (which could be stale, or drift across clvsync versions). The
+		// flag stays in the receipt as a record of the import-time classification.
+		agg := IsAppOwnedAggregate(f.Path)
 		sum, n, err := hashFile(f.Path)
 		switch {
 		case err != nil:

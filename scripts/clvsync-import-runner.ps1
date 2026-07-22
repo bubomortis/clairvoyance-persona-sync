@@ -119,9 +119,15 @@ $done = [ordered]@{
 }
 
 function Write-Done {
-    $done.finishedAt = (Get-Date).ToUniversalTime().ToString('o')
-    ($done | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $donePath -Encoding UTF8
-    Write-Log "wrote done-marker: $donePath"
+    # The done-marker is how the operator learns the outcome, so a failure to write it must
+    # never take the whole runner down after a kill+import. Guard it explicitly.
+    try {
+        $done.finishedAt = (Get-Date).ToUniversalTime().ToString('o')
+        ($done | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $donePath -Encoding UTF8
+        Write-Log "wrote done-marker: $donePath"
+    } catch {
+        Write-Log "FAILED to write done-marker '$donePath': $($_.Exception.Message)" 'ERROR'
+    }
 }
 
 # ======================================================================================
@@ -242,7 +248,9 @@ try {
             Write-Log "relaunch attempt $attempt/$RelaunchRetries via $launchTarget"
             try {
                 if ($launchTarget -like '*.ps1') {
-                    Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $launchTarget) | Out-Null
+                    # Quote the -File path: -ArgumentList joins the array with spaces, so a
+                    # launcher path containing spaces would otherwise break the -File token.
+                    Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $launchTarget)) | Out-Null
                 } else {
                     Start-Process -FilePath $launchTarget | Out-Null
                 }
