@@ -15,6 +15,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 
 	"aead.dev/minisign"
 
@@ -36,6 +37,7 @@ type Options struct {
 	AllowOperatorSync bool     // override the S15 self-sync guard (§19.3)
 	WorkspacePath     string   // Tier 3: where to create the target workspace if absent
 	ReceiptPath       string   // where the finisher writes import-receipt.json (§19.2)
+	NoNameReserve     bool     // opt out of reserving the persona's name in staff-names.json
 }
 
 // mode resolves the effective merge mode (Force wins for back-compat).
@@ -287,6 +289,7 @@ func applyPersona(stage string, meta pkg.Meta, in *clv.Instance, opts Options) (
 		rep.BackedUp = append(rep.BackedUp, "profiles/"+prof+"/staff.json")
 		rep.placed("definition", filepath.Join(in.DataDir, "profiles", prof, "staff.json"))
 	}
+	reserveStaffName(in, meta.PersonaName, rep, opts)
 
 	placeTemplate(stage, "", meta.Template, in, rep, opts)
 	mergeMemory(stage, lname, in, rep, opts)
@@ -294,6 +297,29 @@ func applyPersona(stage string, meta pkg.Meta, in *clv.Instance, opts Options) (
 	mergeResume(stage, "", prof, in, rep, opts)
 	mergeAgentMemory(stage, "", in, rep, opts, agentMemCwd(in, entry, meta.PersonaID, opts.DryRun))
 	return rep, nil
+}
+
+// reserveStaffName reserves the imported persona's display name in the app's
+// staff-names.json — a confirmed-optional nicety so the in-app Create Staff modal knows the
+// name is taken (and won't suggest it for a brand-new staff member). It is append-only and
+// idempotent; the registry is NOT load-bearing for discovery, so any failure is non-fatal
+// and never blocks the import. Skipped on dry-run and when the caller opts out.
+func reserveStaffName(in *clv.Instance, name string, rep *Report, opts Options) {
+	if opts.DryRun {
+		rep.plan("staff-names: reserve %q so the Create Staff modal shows it as taken (optional)", name)
+		return
+	}
+	if opts.NoNameReserve {
+		return
+	}
+	reserved, err := clv.ReserveStaffName(in.DataDir, name, time.Now().UnixMilli())
+	if err != nil {
+		rep.warn("staff-names: could not reserve %q: %v (non-fatal; the name just won't show as taken in the Create Staff modal)", name, err)
+		return
+	}
+	if reserved {
+		rep.Placed = append(rep.Placed, "name-reserved:"+name)
+	}
 }
 
 // agentMemCwd resolves the cwd whose munge the rich agent-memory should land under on THIS
@@ -444,6 +470,7 @@ func applyWorkspace(stage string, meta pkg.Meta, in *clv.Instance, opts Options)
 		}
 		placeTemplate(rdir, "", r.Template, in, rep, opts)
 		mergeHistory(rdir, "", r.ID, prof, in, rep, opts)
+		reserveStaffName(in, r.Name, rep, opts)
 		if !opts.DryRun {
 			rep.placed("persona:" + r.Name)
 		}

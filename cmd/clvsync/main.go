@@ -511,6 +511,7 @@ func cmdImport(args []string) error {
 	allowOperator := fs.Bool("allow-operator-sync", false, "override the S15 guard against importing the Sync Operator")
 	wsPath := fs.String("workspace-path", "", "Tier 3: local path to create the target workspace if absent")
 	receipt := fs.String("receipt", "", "where to write import-receipt.json (default: <data-dir>/import-receipt.json)")
+	noNameReserve := fs.Bool("no-name-reserve", false, "do not reserve the imported persona's name in staff-names.json (the Create Staff modal won't show it as taken)")
 	dataDir := fs.String("data-dir", "", "override Clairvoyance data dir")
 	fs.Parse(args)
 
@@ -529,7 +530,8 @@ func cmdImport(args []string) error {
 	}
 	opts := importer.Options{
 		Mode: m, Force: *force, DryRun: *dryRun, AllowOperatorSync: *allowOperator,
-		WorkspacePath: *wsPath, ReceiptPath: *receipt, Passphrase: os.Getenv("CLVSYNC_PASSPHRASE"),
+		WorkspacePath: *wsPath, ReceiptPath: *receipt, NoNameReserve: *noNameReserve,
+		Passphrase: os.Getenv("CLVSYNC_PASSPHRASE"),
 	}
 	if *identity != "" {
 		b, err := os.ReadFile(*identity)

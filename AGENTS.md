@@ -99,6 +99,11 @@ Staff steps (this is the Sync Operator's job if present):
    during an app-open import must be restarted before it will see the new memory.
 7. Remind the user that whether the session is *offered for resume* is their check in the UI.
 
+**Name reservation (automatic).** The import also reserves the persona's display name in
+Clairvoyance's `staff-names.json` so the in-app Create Staff modal shows it as taken. It is
+append-only, idempotent, and non-load-bearing (the persona loads fine regardless), so nothing
+extra is needed. Pass `--no-name-reserve` if the user explicitly does not want the name reserved.
+
 **Non-CLI fallback:** `clvsync import` with **no** `--in` runs a guided interactive prompt
 (file → passphrase → preview → confirm → apply). A double-clickable `import.cmd` /
 `import.command` can wrap that.

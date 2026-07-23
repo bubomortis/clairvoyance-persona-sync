@@ -359,6 +359,18 @@ func TestReceipt_VerifyImport(t *testing.T) {
 	if len(rec.Files) == 0 {
 		t.Fatal("receipt recorded no hashed files")
 	}
+
+	// The import reserves the imported persona's display name in staff-names.json (optional
+	// nicety so the Create Staff modal shows it as taken). Proves the wiring fires end-to-end.
+	snPath := filepath.Join(filepath.Dir(clv.StaffDir(dstDir)), "staff-names.json")
+	snb, err := os.ReadFile(snPath)
+	if err != nil {
+		t.Fatalf("import did not write staff-names.json: %v", err)
+	}
+	if !strings.Contains(string(snb), `"Syncy"`) {
+		t.Fatalf("imported persona name not reserved in staff-names.json: %s", snb)
+	}
+
 	dst2, _ := clv.Open(dstDir) // reopen to see the merged persona
 	res := importer.VerifyReceipt(rec, dst2)
 	if !res.OK {

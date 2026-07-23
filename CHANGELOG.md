@@ -5,6 +5,17 @@ All notable changes to `clvsync` are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- **Import reserves the persona's display name in `staff-names.json`.** On import, clvsync now
+  adds the persona's name to Clairvoyance's `staff-names.json` registry so the in-app **Create
+  Staff modal** knows the name is taken (and won't suggest it for a brand-new staff member).
+  The write is **append-only, idempotent, and case-insensitive** (an existing active or retired
+  entry is left untouched, preserving the app's name-recycling / bring-back semantics), and it
+  is deliberately conservative — a registry file that exists but does not parse is left alone
+  rather than overwritten. The registry is **not** load-bearing for persona/memory discovery
+  (confirmed with the Clairvoyance devs), so this is purely a convenience; any failure is
+  non-fatal and never blocks the import. Opt out with **`import --no-name-reserve`**.
+
 ## [0.2.6] - 2026-07-22
 
 ### Changed
