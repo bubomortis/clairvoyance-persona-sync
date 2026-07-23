@@ -109,6 +109,27 @@ func TestReserveStaffName_DoesNotClobberUnreadable(t *testing.T) {
 	}
 }
 
+func TestReserveStaffName_SkipsUnknownSchemaVersion(t *testing.T) {
+	dir := t.TempDir()
+	p := staffNamesPath(dir)
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A newer schema than we model (version 2) — must be left completely alone rather than
+	// rewritten with a shape we don't understand.
+	seed := `{"version":2,"names":[{"name":"Quinn"}],"newField":"keepme"}`
+	if err := os.WriteFile(p, []byte(seed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ReserveStaffName(dir, "Reegor", 9000); got || err != nil {
+		t.Fatalf("unknown schema version: got=%v err=%v, want false/nil", got, err)
+	}
+	b, _ := os.ReadFile(p)
+	if string(b) != seed {
+		t.Fatalf("a newer-schema registry must be left byte-identical, got: %s", b)
+	}
+}
+
 func TestReserveStaffName_EmptyNameNoop(t *testing.T) {
 	dir := t.TempDir()
 	if got, err := ReserveStaffName(dir, "   ", 8000); got || err != nil {

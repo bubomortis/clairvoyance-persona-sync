@@ -46,8 +46,13 @@ func staffNamesPath(dataDir string) string {
 // new entry was written.
 //
 // It is deliberately conservative about the app-owned file: a file that exists but does not
-// parse is left alone (the reservation is skipped, not forced over unreadable content); only
-// an absent or cleanly-parsed file is written. nowMs is injected for testability.
+// parse is left alone, and one whose schema version is newer than we understand is left alone
+// too (we never rewrite a shape we don't model). Only an absent or cleanly-parsed version-1
+// file is written, and the write is atomic (temp + rename) so the app can never observe a
+// torn file. Intended to run app-CLOSED (the sanctioned import flow); it is a best-effort
+// nicety with no locking, so running it while the app is writing the same file could still
+// lose one side's update — acceptable because the registry is non-load-bearing. nowMs is
+// injected for testability.
 func ReserveStaffName(dataDir, name string, nowMs int64) (bool, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -64,6 +69,11 @@ func ReserveStaffName(dataDir, name string, nowMs int64) (bool, error) {
 	} else if !os.IsNotExist(err) {
 		return false, err
 	}
+	// Schema-drift guard: only version 1 (or an absent/fresh 0) is understood. If the app
+	// has moved to a newer schema, skip rather than risk dropping fields we don't model.
+	if reg.Version != 0 && reg.Version != 1 {
+		return false, nil
+	}
 	if reg.Version == 0 {
 		reg.Version = 1
 	}
@@ -78,11 +88,36 @@ func ReserveStaffName(dataDir, name string, nowMs int64) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-		return false, err
-	}
-	if err := os.WriteFile(p, b, 0o644); err != nil {
+	if err := writeFileAtomic(p, b); err != nil {
 		return false, err
 	}
 	return true, nil
+}
+
+// writeFileAtomic writes b to path via a same-directory temp file and a rename, so a reader
+// (including the running app) never sees a partially written file.
+func writeFileAtomic(path string, b []byte) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, ".staff-names-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(b); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	return nil
 }

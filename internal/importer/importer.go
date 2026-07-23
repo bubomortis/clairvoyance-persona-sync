@@ -305,11 +305,11 @@ func applyPersona(stage string, meta pkg.Meta, in *clv.Instance, opts Options) (
 // idempotent; the registry is NOT load-bearing for discovery, so any failure is non-fatal
 // and never blocks the import. Skipped on dry-run and when the caller opts out.
 func reserveStaffName(in *clv.Instance, name string, rep *Report, opts Options) {
+	if opts.NoNameReserve {
+		return // opt-out wins, in dry-run and real runs alike
+	}
 	if opts.DryRun {
 		rep.plan("staff-names: reserve %q so the Create Staff modal shows it as taken (optional)", name)
-		return
-	}
-	if opts.NoNameReserve {
 		return
 	}
 	reserved, err := clv.ReserveStaffName(in.DataDir, name, time.Now().UnixMilli())
