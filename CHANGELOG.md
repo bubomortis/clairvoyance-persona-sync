@@ -5,6 +5,8 @@ All notable changes to `clvsync` are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-07-23
+
 ### Added
 - **Import reserves the persona's display name in `staff-names.json`.** On import, clvsync now
   adds the persona's name to Clairvoyance's `staff-names.json` registry so the in-app **Create
